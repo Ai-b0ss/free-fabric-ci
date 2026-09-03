@@ -1,5 +1,6 @@
 """Reusable release-scheduler primitives for Free Fabric CI."""
 
+from .lease_handoff import assign_blocked_packet
 from .provider_outcomes import (
     ProviderOutcome,
     ProviderOutcomeCode,
@@ -20,6 +21,7 @@ __all__ = [
     "ProviderOutcomeCode",
     "ProviderPoolDecision",
     "StateConflict",
+    "assign_blocked_packet",
     "classify_provider_outcome",
     "decide_provider_pool",
     "claim_packet",
