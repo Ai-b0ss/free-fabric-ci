@@ -1,10 +1,12 @@
 import copy
 import unittest
 
+from autopilot.provider_outcomes import ProviderOutcomeCode
 from autopilot.state_machine import (
     StateConflict,
     classify_provider_outcome,
     claim_packet,
+    release_packet,
     transition_packet,
     validate_state,
 )
@@ -17,6 +19,7 @@ BASE = {
         "phase": "RC",
         "candidate_sha": "a" * 40,
         "frozen": True,
+        "critical_path": ["P"],
     },
     "workers": {
         "DIRECTOR": {"automation_id": "d", "enabled": True, "packet": None},
@@ -45,6 +48,7 @@ BASE = {
             "evidence": [],
         },
     },
+    "scheduler_policy": {"max_mutable_product_wip": 3},
 }
 
 
@@ -60,73 +64,116 @@ class StateMachineTests(unittest.TestCase):
         self.assertEqual(claimed["workers"]["A"]["packet"], "P")
         self.assertEqual(claimed["generation"], 2)
 
-    def test_second_worker_cannot_claim_owned_packet(self):
+    def test_blocked_packet_is_not_directly_claimable(self):
         state = copy.deepcopy(BASE)
         state["packets"]["P"]["state"] = "BLOCKED"
-        state["packets"]["P"]["owner_slot"] = "A"
+        state["packets"]["P"]["blocker_class"] = "EXECUTOR_CONTROL_BLOCKED"
         with self.assertRaises(StateConflict):
-            claim_packet(state, "P", "B")
+            claim_packet(state, "P", "A")
+
+    def test_worker_with_existing_packet_cannot_claim_second(self):
+        claimed = claim_packet(BASE, "P", "A")
+        state = copy.deepcopy(claimed)
+        state["packets"]["Q"] = {
+            "state": "READY",
+            "owner_slot": None,
+            "lease_epoch": 0,
+            "depends_on": ["PRE"],
+            "phase": "RC",
+            "blocker_class": None,
+            "evidence": [],
+        }
+        with self.assertRaises(StateConflict):
+            claim_packet(state, "Q", "A")
 
     def test_incomplete_dependency_blocks_claim(self):
         state = copy.deepcopy(BASE)
         state["packets"]["PRE"]["state"] = "BLOCKED"
+        state["packets"]["PRE"]["blocker_class"] = "DEPENDENCY_BLOCKED"
         with self.assertRaises(StateConflict):
             claim_packet(state, "P", "A")
 
     def test_non_owner_cannot_transition(self):
         claimed = claim_packet(BASE, "P", "A")
         with self.assertRaises(StateConflict):
-            transition_packet(claimed, "P", "B", "DONE")
+            transition_packet(claimed, "P", "B", "DONE", evidence="proof")
 
-    def test_done_releases_lease(self):
+    def test_done_requires_evidence_and_releases_lease(self):
         claimed = claim_packet(BASE, "P", "A")
+        with self.assertRaises(StateConflict):
+            transition_packet(claimed, "P", "A", "DONE")
         done = transition_packet(claimed, "P", "A", "DONE", evidence="proof green")
         self.assertEqual(done["packets"]["P"]["state"], "DONE")
         self.assertIsNone(done["packets"]["P"]["owner_slot"])
         self.assertIsNone(done["workers"]["A"]["packet"])
         self.assertEqual(done["packets"]["P"]["evidence"], ["proof green"])
 
+    def test_running_release_requeues_ready(self):
+        claimed = claim_packet(BASE, "P", "A")
+        released = release_packet(claimed, "P", "A")
+        self.assertEqual(released["packets"]["P"]["state"], "READY")
+        self.assertIsNone(released["packets"]["P"]["owner_slot"])
+        self.assertIsNone(released["workers"]["A"]["packet"])
 
-class ProviderOutcomeTests(unittest.TestCase):
-    def test_ai_disabled_is_account_health_not_system_blocker(self):
-        out = classify_provider_outcome(
+    def test_validate_rejects_worker_packet_owner_mismatch(self):
+        state = copy.deepcopy(BASE)
+        state["workers"]["A"]["packet"] = "P"
+        with self.assertRaises(ValueError):
+            validate_state(state)
+
+    def test_validate_rejects_running_without_owner(self):
+        state = copy.deepcopy(BASE)
+        state["packets"]["P"]["state"] = "RUNNING"
+        with self.assertRaises(ValueError):
+            validate_state(state)
+
+    def test_validate_rejects_dependency_cycle(self):
+        state = copy.deepcopy(BASE)
+        state["packets"]["PRE"]["state"] = "READY"
+        state["packets"]["PRE"]["depends_on"] = ["P"]
+        with self.assertRaises(ValueError):
+            validate_state(state)
+
+    def test_validate_rejects_frozen_non_rc(self):
+        state = copy.deepcopy(BASE)
+        state["release"]["phase"] = "STABILIZE"
+        with self.assertRaises(ValueError):
+            validate_state(state)
+
+    def test_block_requires_blocker_class_and_evidence(self):
+        claimed = claim_packet(BASE, "P", "A")
+        with self.assertRaises(StateConflict):
+            transition_packet(claimed, "P", "A", "BLOCKED", evidence="executor unavailable")
+        blocked = transition_packet(
+            claimed,
+            "P",
+            "A",
+            "BLOCKED",
+            blocker_class="EXECUTOR_CONTROL_BLOCKED",
+            evidence="executor unavailable",
+        )
+        self.assertEqual(blocked["packets"]["P"]["state"], "BLOCKED")
+
+
+class ProviderCompatibilityTests(unittest.TestCase):
+    def test_state_machine_reexports_single_provider_contract(self):
+        restricted = classify_provider_outcome(
             http_status=403,
-            error_code="feature_unavailable",
             message="AI is not available for this account",
         )
-        self.assertEqual(out.code, "ACCOUNT_CAPABILITY_RESTRICTED")
-        self.assertFalse(out.system_blocker)
-        self.assertTrue(out.rotate_account)
-        self.assertFalse(out.account_eligible)
+        self.assertEqual(restricted.code, ProviderOutcomeCode.ACCOUNT_CAPABILITY_RESTRICTED)
+        self.assertTrue(restricted.rotate_account)
+        self.assertFalse(restricted.stop_rotation)
 
-    def test_plan_entitlement_is_account_restriction(self):
-        out = classify_provider_outcome(message="Workspace does not have AI; upgrade required")
-        self.assertEqual(out.code, "ACCOUNT_CAPABILITY_RESTRICTED")
-        self.assertTrue(out.rotate_account)
+        expired = classify_provider_outcome(http_status=401, message="session expired")
+        self.assertEqual(expired.code, ProviderOutcomeCode.AUTH_EXPIRED)
+        self.assertTrue(expired.rotate_account)
+        self.assertFalse(expired.stop_rotation)
 
-    def test_expired_session_is_auth_blocker(self):
-        out = classify_provider_outcome(http_status=401, message="session expired")
-        self.assertEqual(out.code, "AUTH_EXPIRED")
-        self.assertTrue(out.system_blocker)
-        self.assertFalse(out.rotate_account)
-
-    def test_trust_denial_is_not_rotated(self):
-        out = classify_provider_outcome(http_status=403, message="suspicious activity detected")
-        self.assertEqual(out.code, "PROVIDER_TRUST_DENIAL")
-        self.assertFalse(out.rotate_account)
-        self.assertFalse(out.retry_later)
-
-    def test_rate_limit_uses_normal_failover(self):
-        out = classify_provider_outcome(http_status=429, message="too many requests")
-        self.assertEqual(out.code, "RATE_LIMIT")
-        self.assertTrue(out.rotate_account)
-        self.assertTrue(out.retry_later)
-        self.assertFalse(out.system_blocker)
-
-    def test_success_is_green(self):
-        out = classify_provider_outcome(http_status=200)
-        self.assertEqual(out.code, "GREEN")
-        self.assertFalse(out.system_blocker)
+        trust = classify_provider_outcome(http_status=403, message="suspicious activity detected")
+        self.assertEqual(trust.code, ProviderOutcomeCode.PROVIDER_TRUST_DENIAL)
+        self.assertFalse(trust.rotate_account)
+        self.assertTrue(trust.stop_rotation)
 
 
 if __name__ == "__main__":
