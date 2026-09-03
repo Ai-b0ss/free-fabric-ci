@@ -36,6 +36,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Validate synthetic scheduler snapshot through CLI
+        run: python -m autopilot validate tests/fixtures/scheduler_snapshot.json
       - name: Provider outcome contract smoke
         run: |
           python - <<'PY'
