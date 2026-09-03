@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "generation": 7,
+  "release": {
+    "phase": "RC",
+    "candidate_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "frozen": true
+  },
+  "workers": {
+    "DIRECTOR": {"automation_id": "director", "enabled": true, "packet": null},
+    "A": {"automation_id": "a", "enabled": true, "packet": "VERIFY"},
+    "B": {"automation_id": "b", "enabled": true, "packet": null},
+    "C": {"automation_id": "c", "enabled": true, "packet": null},
+    "D": {"automation_id": "d", "enabled": true, "packet": null}
+  },
+  "packets": {
+    "PRE": {
+      "state": "DONE",
+      "owner_slot": null,
+      "lease_epoch": 0,
+      "depends_on": [],
+      "phase": "RC",
+      "blocker_class": null,
+      "evidence": ["synthetic prerequisite proof"]
+    },
+    "VERIFY": {
+      "state": "RUNNING",
+      "owner_slot": "A",
+      "lease_epoch": 1,
+      "depends_on": ["PRE"],
+      "phase": "BUILD",
+      "blocker_class": null,
+      "evidence": []
+    }
+  }
+}
