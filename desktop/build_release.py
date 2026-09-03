@@ -70,7 +70,7 @@ def write_entry(zf: zipfile.ZipFile, name: str, data: bytes) -> None:
     if len(data) > MAX_MEMBER_BYTES:
         raise ValueError(f"release member too large: {name}")
     info = zipfile.ZipInfo(name, FIXED_DT)
-    info.compress_type = zipfile.ZIP_DEFLATED
+    info.compress_type = zipfile.ZIP_STORED
     info.create_system = 3
     info.external_attr = 0o100644 << 16
     zf.writestr(info, data)
@@ -84,7 +84,7 @@ def build(root: Path, output: Path) -> dict[str, object]:
     output.parent.mkdir(parents=True, exist_ok=True)
     tmp = output.with_suffix(output.suffix + ".tmp")
     try:
-        with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+        with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_STORED) as zf:
             for name in files:
                 write_entry(zf, name, (root / name).read_bytes())
             write_entry(zf, "desktop-release-manifest.json", manifest_bytes)
@@ -167,8 +167,8 @@ def selftest() -> dict[str, object]:
         for name in ROOT_FILES + DESKTOP_FILES:
             p = root / name
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(name + "\n", "utf-8")
-        (root / "payload" / "server.py").write_text("app = object()\n", "utf-8")
+            p.write_bytes((name + "\n").encode("utf-8"))
+        (root / "payload" / "server.py").write_bytes(b"app = object()\n")
         first = Path(td) / "a.zip"
         second = Path(td) / "b.zip"
         build(root, first)
