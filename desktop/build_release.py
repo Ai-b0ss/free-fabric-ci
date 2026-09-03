@@ -167,8 +167,8 @@ def selftest() -> dict[str, object]:
         for name in ROOT_FILES + DESKTOP_FILES:
             p = root / name
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(name + "\n", "utf-8")
-        (root / "payload" / "server.py").write_text("app = object()\n", "utf-8")
+            p.write_bytes((name + "\n").encode("utf-8"))
+        (root / "payload" / "server.py").write_bytes(b"app = object()\n")
         first = Path(td) / "a.zip"
         second = Path(td) / "b.zip"
         build(root, first)
