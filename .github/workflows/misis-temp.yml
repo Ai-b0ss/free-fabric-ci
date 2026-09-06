@@ -1,10 +1,8 @@
 name: temp-misis-schedule-fetch
 
 on:
-  push:
+  pull_request:
     branches: [main]
-    paths:
-      - '.github/workflows/misis-temp.yml'
 
 jobs:
   fetch-and-parse:
@@ -23,124 +21,56 @@ jobs:
           file itkn-040926.xls
           test "$(stat -c%s itkn-040926.xls)" -gt 10000
 
-      - name: Install parser dependencies
+      - name: Install parser
+        shell: bash
         run: |
-          python -m pip install --disable-pip-version-check pandas xlrd openpyxl
+          git clone -q https://github.com/superuser547/MISIS-Schedule.git parser_repo
+          python -m pip install --disable-pip-version-check -r parser_repo/requirements.txt
 
       - name: Parse BBI-26-6-2
         shell: bash
         run: |
           cat > parse_misis.py <<'PY'
-          import json
-          import math
-          import pandas as pd
-          from datetime import datetime, time
+          import json, sys
+          sys.path.insert(0, 'parser_repo')
+          from misis_schedule.parser import get_sheet_names, read_sheet, get_groups, available_subgroups, parse_schedule
 
-          FILE='itkn-040926.xls'
-          GROUP='ББИ-26-6-2'
-          out={'source': FILE, 'group': GROUP, 'sheets': [], 'matches': []}
-          xls=pd.ExcelFile(FILE)
-          out['sheets']=xls.sheet_names
-          for sheet_name in xls.sheet_names:
-              if 'курс' not in sheet_name.lower():
+          path='itkn-040926.xls'
+          group='ББИ-26-6-2'
+          result={'source': path, 'group': group, 'sheet_names': get_sheet_names(path), 'matches': []}
+          for sheet_name in result['sheet_names']:
+              try:
+                  sheet=read_sheet(path, sheet_name)
+                  groups=get_groups(sheet)
+              except Exception:
                   continue
-              df=pd.read_excel(xls, sheet_name=sheet_name, header=None)
-              # Search the entire header area for the group name, because some MISIS files
-              # have one or more title rows above the service header.
-              hits=[]
-              for r in range(min(12, len(df))):
-                  for c in range(df.shape[1]):
-                      v=df.iat[r,c]
-                      if isinstance(v,str) and v.strip()==GROUP:
-                          hits.append((r,c))
-              if not hits:
+              if group not in groups:
                   continue
-              for header_row, start_col in hits:
-                  # Determine group block end: next non-empty academic-group-looking cell on same row.
-                  end_col=df.shape[1]
-                  for c in range(start_col+1, df.shape[1]):
-                      v=df.iat[header_row,c]
-                      if isinstance(v,str) and v.strip() and (v.strip().startswith('Б') or v.strip().startswith('М')):
-                          end_col=c
-                          break
-                  # Locate service header row (Дата/Номер/Время) nearest to group header.
-                  service_row=None
-                  for r in range(max(0,header_row-3), min(len(df),header_row+4)):
-                      vals=[str(df.iat[r,c]).strip() if c<df.shape[1] and not pd.isna(df.iat[r,c]) else '' for c in range(min(3,df.shape[1]))]
-                      if len(vals)>=3 and vals[0]=='Дата' and vals[1]=='Номер' and vals[2]=='Время':
-                          service_row=r
-                          break
-                  if service_row is None:
-                      # Current layout normally has group names on service row itself.
-                      service_row=header_row
-                  # subgroup labels are usually next row; if absent treat physical pairs as subgroup 1..N
-                  labels=[]
-                  if service_row+1 < len(df):
-                      for c in range(start_col,end_col,2):
-                          val=df.iat[service_row+1,c]
-                          if pd.isna(val) or str(val).strip()=='' : labels.append(None)
-                          else:
-                              try: labels.append(int(float(val)))
-                              except: labels.append(str(val).strip())
-                  pair_count=max(1,(end_col-start_col)//2)
-                  if len(labels)<pair_count: labels += [None]*(pair_count-len(labels))
-                  if all(v is None for v in labels[:pair_count]): labels=list(range(1,pair_count+1))
-                  # Find first schedule row: first row after headers with numeric pair number in column 1 and time in col2.
-                  first=None
-                  for r in range(service_row+1, min(len(df),service_row+12)):
-                      try:
-                          p=int(float(df.iat[r,1]))
-                          tv=str(df.iat[r,2])
-                          if '-' in tv or '–' in tv or '—' in tv:
-                              first=r; break
-                      except: pass
-                  if first is None:
-                      continue
-                  current_day=None
-                  lessons=[]
-                  r=first
-                  while r < len(df):
-                      day=df.iat[r,0]
-                      if isinstance(day,str) and day.strip(): current_day=day.strip()
-                      pair=df.iat[r,1]
-                      if pd.isna(pair): r+=1; continue
-                      try: pair_num=int(float(pair))
-                      except: r+=1; continue
-                      t=str(df.iat[r,2]).strip() if not pd.isna(df.iat[r,2]) else ''
-                      # Treat adjacent rows with same pair/time as upper/lower variants.
-                      rows=[('UPPER',r)]
-                      if r+1<len(df):
-                          p2=df.iat[r+1,1]
-                          t2=str(df.iat[r+1,2]).strip() if not pd.isna(df.iat[r+1,2]) else ''
-                          same=False
-                          try: same=int(float(p2))==pair_num
-                          except: same=(pd.isna(p2) and t2 in ('','nan'))
-                          if same: rows.append(('LOWER',r+1))
-                      for week,rr in rows:
-                          for idx,c in enumerate(range(start_col,end_col,2), start=0):
-                              subject=df.iat[rr,c] if c<df.shape[1] else None
-                              room=df.iat[rr,c+1] if c+1<df.shape[1] else None
-                              if pd.isna(subject) or str(subject).strip()=='':
-                                  continue
-                              lessons.append({
-                                  'weekday': current_day,
-                                  'pair': pair_num,
-                                  'time': t,
-                                  'week': week,
-                                  'subgroup': labels[idx] if idx<len(labels) else idx+1,
-                                  'subject_raw': str(subject).strip(),
-                                  'room': None if pd.isna(room) else str(room).strip(),
-                                  'row_1based': rr+1,
-                                  'subject_col_1based': c+1,
-                              })
-                      r += len(rows)
-                  out['matches'].append({'sheet':sheet_name,'header_row_1based':header_row+1,'start_col_1based':start_col+1,'end_col_exclusive_1based':end_col+1,'subgroup_labels':labels[:pair_count],'lessons':lessons})
+              subgroups=available_subgroups(sheet, group)
+              match={'sheet': sheet_name, 'subgroups': subgroups, 'lessons_by_subgroup': {}}
+              for subgroup in subgroups:
+                  lessons=parse_schedule(sheet, group, subgroup)
+                  rows=[]
+                  for x in lessons:
+                      rows.append({
+                          'weekday': x.weekday,
+                          'pair_number': x.pair_number,
+                          'start_time': x.start_time.isoformat(timespec='minutes'),
+                          'end_time': x.end_time.isoformat(timespec='minutes'),
+                          'week_type': getattr(x.week_type, 'value', str(x.week_type)),
+                          'subject': x.subject,
+                          'location': x.location,
+                          'subgroup': x.subgroup_number,
+                      })
+                  match['lessons_by_subgroup'][str(subgroup)]=rows
+              result['matches'].append(match)
           with open('BBI-26-6-2_itkn-040926.json','w',encoding='utf-8') as f:
-              json.dump(out,f,ensure_ascii=False,indent=2)
-          print(json.dumps(out,ensure_ascii=False,indent=2))
+              json.dump(result,f,ensure_ascii=False,indent=2)
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          if not result['matches']:
+              raise SystemExit('group not found')
           PY
           python parse_misis.py | tee parsed_output.txt
-          grep -q 'ББИ-26-6-2' parsed_output.txt
 
       - name: Upload parsed result
         uses: actions/upload-artifact@v4
