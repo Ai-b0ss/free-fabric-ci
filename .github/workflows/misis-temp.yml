@@ -1,0 +1,153 @@
+name: temp-misis-schedule-fetch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/misis-temp.yml'
+
+jobs:
+  fetch-and-parse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download current official MISIS schedule
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 --connect-timeout 20 \
+            -A 'Mozilla/5.0' \
+            -e 'https://misis.ru/students/schedule/' \
+            'https://misis.ru/files/-/0d429d470d57f677a7770fd4afe00df8/itkn-040926.xls' \
+            -o itkn-040926.xls
+          file itkn-040926.xls
+          test "$(stat -c%s itkn-040926.xls)" -gt 10000
+
+      - name: Install parser dependencies
+        run: |
+          python -m pip install --disable-pip-version-check pandas xlrd openpyxl
+
+      - name: Parse BBI-26-6-2
+        shell: bash
+        run: |
+          cat > parse_misis.py <<'PY'
+          import json
+          import math
+          import pandas as pd
+          from datetime import datetime, time
+
+          FILE='itkn-040926.xls'
+          GROUP='ББИ-26-6-2'
+          out={'source': FILE, 'group': GROUP, 'sheets': [], 'matches': []}
+          xls=pd.ExcelFile(FILE)
+          out['sheets']=xls.sheet_names
+          for sheet_name in xls.sheet_names:
+              if 'курс' not in sheet_name.lower():
+                  continue
+              df=pd.read_excel(xls, sheet_name=sheet_name, header=None)
+              # Search the entire header area for the group name, because some MISIS files
+              # have one or more title rows above the service header.
+              hits=[]
+              for r in range(min(12, len(df))):
+                  for c in range(df.shape[1]):
+                      v=df.iat[r,c]
+                      if isinstance(v,str) and v.strip()==GROUP:
+                          hits.append((r,c))
+              if not hits:
+                  continue
+              for header_row, start_col in hits:
+                  # Determine group block end: next non-empty academic-group-looking cell on same row.
+                  end_col=df.shape[1]
+                  for c in range(start_col+1, df.shape[1]):
+                      v=df.iat[header_row,c]
+                      if isinstance(v,str) and v.strip() and (v.strip().startswith('Б') or v.strip().startswith('М')):
+                          end_col=c
+                          break
+                  # Locate service header row (Дата/Номер/Время) nearest to group header.
+                  service_row=None
+                  for r in range(max(0,header_row-3), min(len(df),header_row+4)):
+                      vals=[str(df.iat[r,c]).strip() if c<df.shape[1] and not pd.isna(df.iat[r,c]) else '' for c in range(min(3,df.shape[1]))]
+                      if len(vals)>=3 and vals[0]=='Дата' and vals[1]=='Номер' and vals[2]=='Время':
+                          service_row=r
+                          break
+                  if service_row is None:
+                      # Current layout normally has group names on service row itself.
+                      service_row=header_row
+                  # subgroup labels are usually next row; if absent treat physical pairs as subgroup 1..N
+                  labels=[]
+                  if service_row+1 < len(df):
+                      for c in range(start_col,end_col,2):
+                          val=df.iat[service_row+1,c]
+                          if pd.isna(val) or str(val).strip()=='' : labels.append(None)
+                          else:
+                              try: labels.append(int(float(val)))
+                              except: labels.append(str(val).strip())
+                  pair_count=max(1,(end_col-start_col)//2)
+                  if len(labels)<pair_count: labels += [None]*(pair_count-len(labels))
+                  if all(v is None for v in labels[:pair_count]): labels=list(range(1,pair_count+1))
+                  # Find first schedule row: first row after headers with numeric pair number in column 1 and time in col2.
+                  first=None
+                  for r in range(service_row+1, min(len(df),service_row+12)):
+                      try:
+                          p=int(float(df.iat[r,1]))
+                          tv=str(df.iat[r,2])
+                          if '-' in tv or '–' in tv or '—' in tv:
+                              first=r; break
+                      except: pass
+                  if first is None:
+                      continue
+                  current_day=None
+                  lessons=[]
+                  r=first
+                  while r < len(df):
+                      day=df.iat[r,0]
+                      if isinstance(day,str) and day.strip(): current_day=day.strip()
+                      pair=df.iat[r,1]
+                      if pd.isna(pair): r+=1; continue
+                      try: pair_num=int(float(pair))
+                      except: r+=1; continue
+                      t=str(df.iat[r,2]).strip() if not pd.isna(df.iat[r,2]) else ''
+                      # Treat adjacent rows with same pair/time as upper/lower variants.
+                      rows=[('UPPER',r)]
+                      if r+1<len(df):
+                          p2=df.iat[r+1,1]
+                          t2=str(df.iat[r+1,2]).strip() if not pd.isna(df.iat[r+1,2]) else ''
+                          same=False
+                          try: same=int(float(p2))==pair_num
+                          except: same=(pd.isna(p2) and t2 in ('','nan'))
+                          if same: rows.append(('LOWER',r+1))
+                      for week,rr in rows:
+                          for idx,c in enumerate(range(start_col,end_col,2), start=0):
+                              subject=df.iat[rr,c] if c<df.shape[1] else None
+                              room=df.iat[rr,c+1] if c+1<df.shape[1] else None
+                              if pd.isna(subject) or str(subject).strip()=='':
+                                  continue
+                              lessons.append({
+                                  'weekday': current_day,
+                                  'pair': pair_num,
+                                  'time': t,
+                                  'week': week,
+                                  'subgroup': labels[idx] if idx<len(labels) else idx+1,
+                                  'subject_raw': str(subject).strip(),
+                                  'room': None if pd.isna(room) else str(room).strip(),
+                                  'row_1based': rr+1,
+                                  'subject_col_1based': c+1,
+                              })
+                      r += len(rows)
+                  out['matches'].append({'sheet':sheet_name,'header_row_1based':header_row+1,'start_col_1based':start_col+1,'end_col_exclusive_1based':end_col+1,'subgroup_labels':labels[:pair_count],'lessons':lessons})
+          with open('BBI-26-6-2_itkn-040926.json','w',encoding='utf-8') as f:
+              json.dump(out,f,ensure_ascii=False,indent=2)
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+          python parse_misis.py | tee parsed_output.txt
+          grep -q 'ББИ-26-6-2' parsed_output.txt
+
+      - name: Upload parsed result
+        uses: actions/upload-artifact@v4
+        with:
+          name: misis-itkn-040926-bbi-26-6-2
+          path: |
+            itkn-040926.xls
+            BBI-26-6-2_itkn-040926.json
+            parsed_output.txt
+          retention-days: 1
