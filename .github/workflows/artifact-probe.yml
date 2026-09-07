@@ -1,0 +1,23 @@
+name: Public Artifact Probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/artifact-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Make probe
+        run: printf 'public-artifact-probe\n' > probe.txt
+      - name: Upload probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-artifact-probe
+          path: probe.txt
+          retention-days: 1
