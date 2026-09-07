@@ -8,19 +8,53 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
-  public-harness:
+  public-regressions:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.11', '3.12', '3.13']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: ${{ matrix.python }}
+      - name: Compile public code
+        run: python -m compileall -q desktop autopilot tests
       - name: Run public regressions
         env:
           PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONHASHSEED: '0'
         run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+  scheduler-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Validate synthetic scheduler snapshot through CLI
+        run: python -m autopilot validate tests/fixtures/scheduler_snapshot.json
+      - name: Provider outcome contract smoke
+        run: |
+          python - <<'PY'
+          from autopilot.state_machine import classify_provider_outcome
+          cases = [
+              ({'http_status': 200}, 'GREEN'),
+              ({'http_status': 401, 'message': 'session expired'}, 'AUTH_EXPIRED'),
+              ({'http_status': 403, 'message': 'AI is not available for this account'}, 'ACCOUNT_CAPABILITY_RESTRICTED'),
+              ({'http_status': 429, 'message': 'too many requests'}, 'RATE_LIMIT'),
+              ({'http_status': 403, 'message': 'suspicious activity detected'}, 'PROVIDER_TRUST_DENIAL'),
+          ]
+          for kwargs, expected in cases:
+              actual = classify_provider_outcome(**kwargs).code
+              if actual != expected:
+                  raise SystemExit(f'{kwargs}: {actual} != {expected}')
+          PY
