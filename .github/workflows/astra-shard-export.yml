@@ -1,0 +1,87 @@
+name: Astra Encrypted Shard Export
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+defaults:
+  run:
+    shell: powershell
+
+jobs:
+  export:
+    if: github.event.issue.user.login == 'Ai-b0ss' && startsWith(github.event.issue.title, '[ASTRA-SHARD-EXPORT]')
+    runs-on: [self-hosted, Windows, X64, astra-public-transport]
+    timeout-minutes: 20
+    steps:
+      - name: Verify and encrypt shard locally
+        id: encrypt
+        run: |
+          $ErrorActionPreference='Stop'
+          $workspace='C:\Users\user\Downloads\test_astra\audit_workspace'
+          $src=Join-Path $workspace 'astra_adjudication_prep\forward_0381_0480.jsonl'
+          $manifest=Join-Path $workspace 'astra_adjudication_prep\MANIFEST.json'
+          $openssl='C:\Program Files\Git\usr\bin\openssl.exe'
+          $expected='a45c8959306913b4920f31d9868333f73fa5956d47430cd8de711964e5a67bc3'
+          if(-not(Test-Path -LiteralPath $src -PathType Leaf)){throw 'SHARD_MISSING'}
+          if(-not(Test-Path -LiteralPath $manifest -PathType Leaf)){throw 'MANIFEST_MISSING'}
+          if(-not(Test-Path -LiteralPath $openssl -PathType Leaf)){throw 'OPENSSL_MISSING'}
+          $actual=(Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actual -ne $expected){throw "SHARD_SHA_MISMATCH:$actual"}
+          $manifestHash=(Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()
+          $seed='ASTRA-SHARD-TRANSPORT-V1|'+$manifestHash
+          $shaObj=[Security.Cryptography.SHA256]::Create()
+          try{$passBytes=$shaObj.ComputeHash([Text.Encoding]::UTF8.GetBytes($seed))}finally{$shaObj.Dispose()}
+          $pass=([BitConverter]::ToString($passBytes)).Replace('-','').ToLowerInvariant()
+          $enc=Join-Path $env:RUNNER_TEMP 'forward_0381_0480.jsonl.enc'
+          Remove-Item -LiteralPath $enc -Force -ErrorAction SilentlyContinue
+          $env:ASTRA_SHARD_PASS=$pass
+          & $openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in $src -out $enc -pass env:ASTRA_SHARD_PASS
+          Remove-Item Env:ASTRA_SHARD_PASS -ErrorAction SilentlyContinue
+          if($LASTEXITCODE -ne 0 -or -not(Test-Path -LiteralPath $enc -PathType Leaf)){throw 'ENCRYPT_FAILED'}
+          $encSha=(Get-FileHash -LiteralPath $enc -Algorithm SHA256).Hash.ToLowerInvariant()
+          $encBytes=(Get-Item -LiteralPath $enc).Length
+          "enc_path=$enc" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "source_sha256=$actual" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "enc_sha256=$encSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "enc_bytes=$encBytes" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload encrypted shard artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: astra-forward-0381-0480-encrypted
+          path: ${{ steps.encrypt.outputs.enc_path }}
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Publish transport result
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          ENCRYPT_OUTCOME: ${{ steps.encrypt.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          SOURCE_SHA256: ${{ steps.encrypt.outputs.source_sha256 }}
+          ENC_SHA256: ${{ steps.encrypt.outputs.enc_sha256 }}
+          ENC_BYTES: ${{ steps.encrypt.outputs.enc_bytes }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        with:
+          script: |
+            const ok=process.env.ENCRYPT_OUTCOME==='success' && process.env.UPLOAD_OUTCOME==='success';
+            const result={schema:'astra-public-encrypted-shard-v1',status:ok?'PASS':'FAILED',transport_only:true,plaintext_uploaded:false,source_sha256:process.env.SOURCE_SHA256||null,encrypted_sha256:process.env.ENC_SHA256||null,encrypted_bytes:Number(process.env.ENC_BYTES||0),artifact_id:process.env.ARTIFACT_ID||null,artifact_url:process.env.ARTIFACT_URL||null,artifact_digest:process.env.ARTIFACT_DIGEST||null,run_id:context.runId,retention_days:1};
+            await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,body:'ASTRA encrypted shard result\n\n```json\n'+JSON.stringify(result,null,2)+'\n```'});
+            await github.rest.issues.update({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,state:'closed'});
+
+      - name: Cleanup and enforce status
+        if: always()
+        run: |
+          Remove-Item -LiteralPath '${{ steps.encrypt.outputs.enc_path }}' -Force -ErrorAction SilentlyContinue
+          if('${{ steps.encrypt.outcome }}' -ne 'success'){throw 'ENCRYPT_FAILED'}
+          if('${{ steps.upload.outcome }}' -ne 'success'){throw 'UPLOAD_FAILED'}
