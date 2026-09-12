@@ -28,8 +28,9 @@ const bumpRes = await fetch(`${controlUrl}/v1/tasks/requeue`, {
   body: JSON.stringify({ task_id: taskId }),
 });
 
-assert.equal(bumpRes.status, 200, `Failover failed: ${bumpRes.status} ${await bumpRes.text()}`);
-const bumpData = await bumpRes.json();
+const bumpText = await bumpRes.text();
+assert.equal(bumpRes.status, 200, `Failover failed: ${bumpRes.status} ${bumpText}`);
+const bumpData = JSON.parse(bumpText);
 assert.equal(bumpData.task.generation, 2, 'Generation must advance to 2');
 assert.equal(bumpData.task.state, 'READY', 'State must transition to READY');
 
