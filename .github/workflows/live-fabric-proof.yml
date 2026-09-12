@@ -1,0 +1,208 @@
+name: Live Fabric Proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ==========================================
+  # MIGRATION DAG
+  # ==========================================
+
+  fabric-migration-bootstrap:
+    name: fabric-migration-bootstrap
+    runs-on: ubuntu-latest
+    environment: fabric-owner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Bootstrap migration task
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_OWNER_TOKEN: ${{ secrets.FABRIC_OWNER_TOKEN }}
+          FABRIC_TASK_ID: migration-task-${{ github.run_id }}-${{ github.run_attempt }}
+          FABRIC_EXPECTED_MARKER: migration-marker-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/migration-bootstrap.mjs
+
+  fabric-migration-worker-a:
+    name: fabric-migration-worker-a
+    needs: fabric-migration-bootstrap
+    runs-on: ubuntu-latest
+    environment: fabric-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Worker A Gen-1 execution and checkpoint
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_RUNNER_TOKEN: ${{ secrets.FABRIC_RUNNER_TOKEN }}
+          FABRIC_TASK_ID: migration-task-${{ github.run_id }}-${{ github.run_attempt }}
+          FABRIC_EXPECTED_MARKER: migration-marker-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/migration-worker-a.mjs
+
+  fabric-migration-failover:
+    name: fabric-migration-failover
+    needs: fabric-migration-worker-a
+    runs-on: ubuntu-latest
+    environment: fabric-owner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Failover to Generation 2
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_OWNER_TOKEN: ${{ secrets.FABRIC_OWNER_TOKEN }}
+          FABRIC_TASK_ID: migration-task-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/migration-failover.mjs
+
+  fabric-migration-stale-a:
+    name: fabric-migration-stale-a
+    needs: fabric-migration-failover
+    runs-on: ubuntu-latest
+    environment: fabric-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Stale Worker A write rejection proof
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_RUNNER_TOKEN: ${{ secrets.FABRIC_RUNNER_TOKEN }}
+          FABRIC_TASK_ID: migration-task-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/migration-stale-a.mjs
+
+  fabric-migration-worker-b:
+    name: fabric-migration-worker-b
+    needs: fabric-migration-stale-a
+    runs-on: ubuntu-latest
+    environment: fabric-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Worker B checkpoint restore and continuation
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_RUNNER_TOKEN: ${{ secrets.FABRIC_RUNNER_TOKEN }}
+          FABRIC_TASK_ID: migration-task-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/migration-worker-b.mjs
+
+  fabric-migration-verifier:
+    name: fabric-migration-verifier
+    needs: fabric-migration-worker-b
+    runs-on: ubuntu-latest
+    environment: fabric-verifier
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Independent Verifier attestation and acceptance
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_VERIFIER_TOKEN: ${{ secrets.FABRIC_VERIFIER_TOKEN }}
+          FABRIC_TASK_ID: migration-task-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/migration-verifier.mjs
+
+  # ==========================================
+  # FORGED RESULT DAG
+  # ==========================================
+
+  fabric-forged-bootstrap:
+    name: fabric-forged-bootstrap
+    runs-on: ubuntu-latest
+    environment: fabric-owner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Bootstrap forged worker task
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_OWNER_TOKEN: ${{ secrets.FABRIC_OWNER_TOKEN }}
+          FABRIC_FORGED_TASK_ID: forged-task-${{ github.run_id }}-${{ github.run_attempt }}
+          FABRIC_HONEST_MARKER: honest-marker-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/forged-bootstrap.mjs
+
+  fabric-forged-malicious-worker:
+    name: fabric-forged-malicious-worker
+    needs: fabric-forged-bootstrap
+    runs-on: ubuntu-latest
+    environment: fabric-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Malicious worker forged submission
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_RUNNER_TOKEN: ${{ secrets.FABRIC_RUNNER_TOKEN }}
+          FABRIC_FORGED_TASK_ID: forged-task-${{ github.run_id }}-${{ github.run_attempt }}
+          FABRIC_HONEST_MARKER: honest-marker-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/forged-malicious-worker.mjs
+
+  fabric-forged-verifier-reject:
+    name: fabric-forged-verifier-reject
+    needs: fabric-forged-malicious-worker
+    runs-on: ubuntu-latest
+    environment: fabric-verifier
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verifier rejects contradictory evidence
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_VERIFIER_TOKEN: ${{ secrets.FABRIC_VERIFIER_TOKEN }}
+          FABRIC_FORGED_TASK_ID: forged-task-${{ github.run_id }}-${{ github.run_attempt }}
+          FABRIC_HONEST_MARKER: honest-marker-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/forged-verifier-reject.mjs
+
+  fabric-forged-repaired-worker:
+    name: fabric-forged-repaired-worker
+    needs: fabric-forged-verifier-reject
+    runs-on: ubuntu-latest
+    environment: fabric-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Repaired worker genuine execution
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_RUNNER_TOKEN: ${{ secrets.FABRIC_RUNNER_TOKEN }}
+          FABRIC_FORGED_TASK_ID: forged-task-${{ github.run_id }}-${{ github.run_attempt }}
+          FABRIC_HONEST_MARKER: honest-marker-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/forged-repaired-worker.mjs
+
+  fabric-forged-verifier-accept:
+    name: fabric-forged-verifier-accept
+    needs: fabric-forged-repaired-worker
+    runs-on: ubuntu-latest
+    environment: fabric-verifier
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verifier accepts repaired evidence
+        env:
+          FABRIC_CONTROL_URL: ${{ secrets.FABRIC_CONTROL_URL }}
+          FABRIC_VERIFIER_TOKEN: ${{ secrets.FABRIC_VERIFIER_TOKEN }}
+          FABRIC_FORGED_TASK_ID: forged-task-${{ github.run_id }}-${{ github.run_attempt }}
+          FABRIC_HONEST_MARKER: honest-marker-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node harness/forged-verifier-accept.mjs
