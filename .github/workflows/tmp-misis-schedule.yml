@@ -1,0 +1,66 @@
+name: TEMP MISIS schedule fetch
+
+on:
+  push:
+    branches: [tmp-misis-schedule-20260913]
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-parse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install XLS reader
+        run: python -m pip install --disable-pip-version-check xlrd==2.0.1
+      - name: Download official MISIS XLS
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://misis.ru/files/-/d43e93e8c0710418c395f3c72073dc4f/itkn-110926.xls'
+          curl -fL --retry 4 --retry-delay 2 --connect-timeout 20 "$url" -o itkn-110926.xls
+          test -s itkn-110926.xls
+          file itkn-110926.xls
+          sha256sum itkn-110926.xls | tee SHA256.txt
+      - name: Parse workbook losslessly to JSON
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, xlrd
+          path='itkn-110926.xls'
+          wb=xlrd.open_workbook(path, formatting_info=False)
+          out={'source':path,'datemode':wb.datemode,'sheets':[],'matches':[]}
+          needle='ББИ-26-6-2'
+          for si, sh in enumerate(wb.sheets()):
+              rows=[]
+              for r in range(sh.nrows):
+                  vals=[]
+                  for c in range(sh.ncols):
+                      v=sh.cell_value(r,c)
+                      if isinstance(v,float) and v.is_integer():
+                          v=int(v)
+                      vals.append(v)
+                      if needle.lower() in str(v).lower():
+                          out['matches'].append({'sheet_index':si,'sheet':sh.name,'row':r,'col':c,'value':v})
+                  while vals and vals[-1] in ('', None): vals.pop()
+                  rows.append(vals)
+              out['sheets'].append({'index':si,'name':sh.name,'nrows':sh.nrows,'ncols':sh.ncols,'merged_cells':[list(x) for x in sh.merged_cells],'rows':rows})
+          with open('workbook_dump.json','w',encoding='utf-8') as f:
+              json.dump(out,f,ensure_ascii=False,indent=2)
+          print(json.dumps({'sheets':[(s['index'],s['name'],s['nrows'],s['ncols']) for s in out['sheets']], 'matches':out['matches']},ensure_ascii=False,indent=2))
+          if not out['matches']:
+              raise SystemExit('Target group not found')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: misis-itkn-110926
+          path: |
+            itkn-110926.xls
+            workbook_dump.json
+            SHA256.txt
+          if-no-files-found: error
+          retention-days: 1
