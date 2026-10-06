@@ -1,0 +1,158 @@
+{
+  "schema": "agent-file-index-v1",
+  "repository": "Ai-b0ss/free-fabric-ci",
+  "branch": "main",
+  "note": "This public repo contains reusable CI/harness code, not private product implementations. Run tools/build_agent_index.py for exact line/symbol positions.",
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "blob": "5ffd64fdd2a6f3e1f3ff73550b615f66356cfd46",
+      "bytes": 539,
+      "role": "ci"
+    },
+    {
+      "path": ".github/workflows/live-fabric-proof.yml",
+      "blob": "8befe0afb33e5bf204bbf7e8fb1efd1cbc420607",
+      "bytes": 7751,
+      "role": "ci"
+    },
+    {
+      "path": "README.md",
+      "blob": "f3b72fe95181c6759eeb375f83a32d345d203859",
+      "bytes": 1069,
+      "role": "documentation"
+    },
+    {
+      "path": "desktop/build_release.py",
+      "blob": "f14ac3a1c95c58837b35a97b1b7017bd21ac1f58",
+      "bytes": 8764,
+      "role": "desktop_release_runtime"
+    },
+    {
+      "path": "desktop/combined_acceptance.py",
+      "blob": "837c74eaeac381814f602f6eedbc7e769c86fd50",
+      "bytes": 15096,
+      "role": "desktop_release_runtime"
+    },
+    {
+      "path": "desktop/local_http.py",
+      "blob": "ee12d6ef270f925f59520fad5ef8f21f89364659",
+      "bytes": 2308,
+      "role": "desktop_release_runtime"
+    },
+    {
+      "path": "harness/common.mjs",
+      "blob": "7f0738d066c2bfff2ac3ee842c1f0b3263c9fa38",
+      "bytes": 5316,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/forged-bootstrap.mjs",
+      "blob": "d2280949d8ecdfb83ffdd254eac660dc790dcd9d",
+      "bytes": 1676,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/forged-malicious-worker.mjs",
+      "blob": "c17e1e0fc235576c8f0b514b0c13d9c6ae7da792",
+      "bytes": 3195,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/forged-repaired-worker.mjs",
+      "blob": "4661ae88aca99973c4c13543367ce41d5fa86eb2",
+      "bytes": 3150,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/forged-verifier-accept.mjs",
+      "blob": "1324f526903dd07958a062e1861028d1b4d5ad69",
+      "bytes": 4035,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/forged-verifier-reject.mjs",
+      "blob": "16404628ebd9aff76b14d9665c3ac1f75c9ac889",
+      "bytes": 2892,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/migration-bootstrap.mjs",
+      "blob": "db7a1e10ee16885056809866ffeeb8be732490bd",
+      "bytes": 1702,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/migration-failover.mjs",
+      "blob": "df1be5e4a8cb0624d74118ad9eacf8b7cbe35f7c",
+      "bytes": 1320,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/migration-stale-a.mjs",
+      "blob": "07314a787592599aeed290c98dba62e5d6b71f5d",
+      "bytes": 2618,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/migration-verifier.mjs",
+      "blob": "b853349bceaecfdf67cfe215a7579440a0a8fa4c",
+      "bytes": 7788,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/migration-worker-a.mjs",
+      "blob": "239591bc823b0662a1ace4b4b7230bbef1042bcc",
+      "bytes": 3880,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "harness/migration-worker-b.mjs",
+      "blob": "e1cb14d001861c700441386d3a34d03a5e83a16e",
+      "bytes": 5533,
+      "role": "acceptance_harness"
+    },
+    {
+      "path": "tests/test_f52_adversarial.py",
+      "blob": "b0a2dc8d1ae80926b61b96973dcbe83143b03335",
+      "bytes": 4572,
+      "role": "test"
+    },
+    {
+      "path": "tests/test_f52_endpoint_identity.py",
+      "blob": "20e06c63015bc4e63faabbd423d79462759a0a46",
+      "bytes": 2281,
+      "role": "test"
+    },
+    {
+      "path": "tests/test_local_http_url_guard.py",
+      "blob": "c56b6ecd1cdc38b77e00093f94584284267e391c",
+      "bytes": 1993,
+      "role": "test"
+    },
+    {
+      "path": "tests/test_public_harness.py",
+      "blob": "723203cc6d114092c89aee275651bd1e640f37be",
+      "bytes": 9323,
+      "role": "test"
+    },
+    {
+      "path": "tests/test_release_verifier.py",
+      "blob": "3fd6f3c388ad0ab5e0a36ca1b80e59def1b34e42",
+      "bytes": 1137,
+      "role": "test"
+    },
+    {
+      "path": "tests/test_transport.py",
+      "blob": "deac554076be99a6af27f4bc8c69d50e5b4ca1c0",
+      "bytes": 2668,
+      "role": "test"
+    },
+    {
+      "path": "tools/build_agent_index.py",
+      "blob": "6e97262afe88d48dd498ec6be3cdaf8d748259ff",
+      "bytes": 3455,
+      "role": "agent_tooling"
+    }
+  ]
+}
