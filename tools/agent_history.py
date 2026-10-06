@@ -24,15 +24,15 @@ def git(root: Path, *args: str, text: bool = True, check: bool = True):
 
 
 def repo_root() -> Path:
-    p = subprocess.run(
+    proc = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
-    if p.returncode != 0:
+    if proc.returncode != 0:
         raise RuntimeError("Not inside a Git repository")
-    return Path(p.stdout.strip()).resolve()
+    return Path(proc.stdout.strip()).resolve()
 
 
 def canonical_ref_name(name: str) -> str:
@@ -75,20 +75,46 @@ def list_refs(root: Path) -> list[dict]:
     return sorted(by_name.values(), key=lambda row: row["name"])
 
 
+def list_commits(root: Path, max_commits: int | None = None) -> list[str]:
+    args = ["rev-list", "--all", "--date-order"]
+    if max_commits:
+        args.append(f"--max-count={max_commits}")
+    return [
+        line.strip()
+        for line in git(root, *args).stdout.splitlines()
+        if line.strip()
+    ]
+
+
+def commit_meta(root: Path, commit: str) -> dict:
+    lines = git(
+        root,
+        "show",
+        "-s",
+        "--format=%H%n%cI%n%s",
+        commit,
+    ).stdout.splitlines()
+    return {
+        "commit": lines[0] if lines else commit,
+        "date": lines[1] if len(lines) > 1 else None,
+        "subject": lines[2] if len(lines) > 2 else None,
+    }
+
+
 def resolve(root: Path, ref: str) -> str:
     return git(root, "rev-parse", f"{ref}^{{commit}}").stdout.strip()
 
 
 def main_ref(root: Path, preferred: str) -> str:
     for candidate in (preferred, f"origin/{preferred}"):
-        p = git(
+        proc = git(
             root,
             "rev-parse",
             "--verify",
             f"{candidate}^{{commit}}",
             check=False,
         )
-        if p.returncode == 0:
+        if proc.returncode == 0:
             return candidate
     return preferred
 
@@ -105,15 +131,17 @@ def branch_info(root: Path, ref: str, baseline: str) -> dict:
         f"{base_ref}...{ref}",
     ).stdout.strip().split()
     behind, ahead = (
-        (int(counts[0]), int(counts[1])) if len(counts) == 2 else (None, None)
+        (int(counts[0]), int(counts[1]))
+        if len(counts) == 2
+        else (None, None)
     )
+
     stat = git(
         root,
         "diff",
         "--name-status",
         f"{base_ref}...{ref}",
     ).stdout.splitlines()
-
     changed = []
     top = Counter()
     for line in stat:
@@ -125,19 +153,12 @@ def branch_info(root: Path, ref: str, baseline: str) -> dict:
         changed.append({"status": status, "path": path})
         top[path.split("/", 1)[0]] += 1
 
-    meta = git(
-        root,
-        "show",
-        "-s",
-        "--format=%H%n%cI%n%s",
-        ref,
-    ).stdout.splitlines()
-
+    meta = commit_meta(root, ref)
     return {
         "ref": ref,
         "head": resolved,
-        "date": meta[1] if len(meta) > 1 else None,
-        "subject": meta[2] if len(meta) > 2 else None,
+        "date": meta["date"],
+        "subject": meta["subject"],
         "baseline": base_ref,
         "merge_base": merge_base,
         "ahead": ahead,
@@ -152,9 +173,31 @@ def filter_refs(refs: list[dict], glob_pattern: str | None) -> list[dict]:
     if not glob_pattern:
         return refs
     return [
-        row for row in refs
+        row
+        for row in refs
         if fnmatch.fnmatch(row["name"], glob_pattern)
     ]
+
+
+def grep_args(
+    pattern: str,
+    regex: bool,
+    ignore_case: bool,
+) -> list[str]:
+    args = ["grep", "-n", "-I"]
+    if ignore_case:
+        args.append("-i")
+    if not regex:
+        args.append("-F")
+    args.append(pattern)
+    return args
+
+
+def parse_grep_line(line: str) -> tuple[str, int, str] | None:
+    match = re.match(r"^[^:]+:(.*?):(\d+):(.*)$", line)
+    if not match:
+        return None
+    return match.group(1), int(match.group(2)), match.group(3)
 
 
 def search_text(
@@ -166,32 +209,74 @@ def search_text(
     max_matches: int,
 ) -> list[dict]:
     results = []
-    base_args = ["grep", "-n", "-I"]
-    if ignore_case:
-        base_args.append("-i")
-    if not regex:
-        base_args.append("-F")
-
+    base = grep_args(pattern, regex, ignore_case)
     for row in refs:
         proc = git(
             root,
-            *base_args,
-            pattern,
-            row["ref"],
+            *base,
+            pattern if False else row["ref"],
             check=False,
         )
         if proc.returncode not in (0, 1):
             continue
         for line in proc.stdout.splitlines():
-            match = re.match(r"^[^:]+:(.*?):(\d+):(.*)$", line)
-            if not match:
+            parsed = parse_grep_line(line)
+            if not parsed:
                 continue
+            path, line_no, text = parsed
             results.append({
                 "branch": row["name"],
                 "head": row["head"],
-                "path": match.group(1),
-                "line": int(match.group(2)),
-                "text": match.group(3),
+                "path": path,
+                "line": line_no,
+                "text": text,
+            })
+            if len(results) >= max_matches:
+                return results
+    return results
+
+
+def search_history_text(
+    root: Path,
+    pattern: str,
+    regex: bool,
+    ignore_case: bool,
+    max_matches: int,
+    max_commits: int | None,
+) -> list[dict]:
+    results = []
+    seen_blob_hits = set()
+    base = grep_args(pattern, regex, ignore_case)
+
+    for commit in list_commits(root, max_commits):
+        proc = git(root, *base, commit, check=False)
+        if proc.returncode not in (0, 1):
+            continue
+        meta = None
+        for line in proc.stdout.splitlines():
+            parsed = parse_grep_line(line)
+            if not parsed:
+                continue
+            path, line_no, text = parsed
+            blob = git(
+                root,
+                "rev-parse",
+                f"{commit}:{path}",
+                check=False,
+            ).stdout.strip()
+            dedupe = (blob, line_no, text)
+            if blob and dedupe in seen_blob_hits:
+                continue
+            if blob:
+                seen_blob_hits.add(dedupe)
+            if meta is None:
+                meta = commit_meta(root, commit)
+            results.append({
+                **meta,
+                "path": path,
+                "blob": blob or None,
+                "line": line_no,
+                "text": text,
             })
             if len(results) >= max_matches:
                 return results
@@ -225,6 +310,49 @@ def search_path(
                 })
                 if len(results) >= max_matches:
                     return results
+    return results
+
+
+def search_history_path(
+    root: Path,
+    pattern: str,
+    max_matches: int,
+    max_commits: int | None,
+) -> list[dict]:
+    results = []
+    seen = set()
+    for commit in list_commits(root, max_commits):
+        proc = git(
+            root,
+            "ls-tree",
+            "-r",
+            commit,
+            check=False,
+        )
+        if proc.returncode != 0:
+            continue
+        meta = None
+        for line in proc.stdout.splitlines():
+            if "\t" not in line:
+                continue
+            left, path = line.split("\t", 1)
+            if not fnmatch.fnmatch(path, pattern):
+                continue
+            parts = left.split()
+            blob = parts[2] if len(parts) >= 3 else None
+            dedupe = (blob, path)
+            if dedupe in seen:
+                continue
+            seen.add(dedupe)
+            if meta is None:
+                meta = commit_meta(root, commit)
+            results.append({
+                **meta,
+                "path": path,
+                "blob": blob,
+            })
+            if len(results) >= max_matches:
+                return results
     return results
 
 
@@ -265,7 +393,7 @@ def build_index(
         rows.append(info)
 
     payload = {
-        "schema": "agent-history-index-v1",
+        "schema": "agent-history-index-v2",
         "baseline": base,
         "branches": rows,
     }
@@ -283,7 +411,7 @@ def build_index(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Search and inspect all Git branches without checking them out."
+        description="Search and inspect all reachable Git work without checkout."
     )
     parser.add_argument(
         "--baseline",
@@ -292,40 +420,40 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser(
-        "branches",
-        help="List every local/origin branch with head/date/subject",
-    )
+    p = sub.add_parser("branches")
     p.add_argument("--glob", dest="glob_pattern")
 
-    p = sub.add_parser(
-        "branch-info",
-        help="Diff one branch against the canonical baseline",
-    )
+    p = sub.add_parser("branch-info")
     p.add_argument("ref")
 
-    p = sub.add_parser(
-        "find-text",
-        help="Search text across every branch without checkout",
-    )
+    p = sub.add_parser("commit-info")
+    p.add_argument("commit")
+
+    p = sub.add_parser("find-text")
     p.add_argument("pattern")
     p.add_argument("--regex", action="store_true")
     p.add_argument("-i", "--ignore-case", action="store_true")
     p.add_argument("--glob", dest="glob_pattern")
     p.add_argument("--max", type=int, default=500)
 
-    p = sub.add_parser(
-        "find-path",
-        help="Find file paths across every branch",
-    )
-    p.add_argument("pattern", help="Shell-style glob, e.g. '**/ROADMAP*.md'")
+    p = sub.add_parser("find-history-text")
+    p.add_argument("pattern")
+    p.add_argument("--regex", action="store_true")
+    p.add_argument("-i", "--ignore-case", action="store_true")
+    p.add_argument("--max", type=int, default=500)
+    p.add_argument("--max-commits", type=int)
+
+    p = sub.add_parser("find-path")
+    p.add_argument("pattern")
     p.add_argument("--glob", dest="glob_pattern")
     p.add_argument("--max", type=int, default=500)
 
-    p = sub.add_parser(
-        "index",
-        help="Build branch metadata/diff summary index",
-    )
+    p = sub.add_parser("find-history-path")
+    p.add_argument("pattern")
+    p.add_argument("--max", type=int, default=500)
+    p.add_argument("--max-commits", type=int)
+
+    p = sub.add_parser("index")
     p.add_argument("--glob", dest="glob_pattern")
     p.add_argument("--out", default=".agent/history-index.json")
 
@@ -340,6 +468,8 @@ def main() -> None:
         dump({"branches": refs})
     elif args.cmd == "branch-info":
         dump(branch_info(root, args.ref, args.baseline))
+    elif args.cmd == "commit-info":
+        dump(commit_meta(root, args.commit))
     elif args.cmd == "find-text":
         dump({
             "pattern": args.pattern,
@@ -352,6 +482,18 @@ def main() -> None:
                 args.max,
             ),
         })
+    elif args.cmd == "find-history-text":
+        dump({
+            "pattern": args.pattern,
+            "matches": search_history_text(
+                root,
+                args.pattern,
+                args.regex,
+                args.ignore_case,
+                args.max,
+                args.max_commits,
+            ),
+        })
     elif args.cmd == "find-path":
         dump({
             "pattern": args.pattern,
@@ -360,6 +502,16 @@ def main() -> None:
                 args.pattern,
                 refs,
                 args.max,
+            ),
+        })
+    elif args.cmd == "find-history-path":
+        dump({
+            "pattern": args.pattern,
+            "matches": search_history_path(
+                root,
+                args.pattern,
+                args.max,
+                args.max_commits,
             ),
         })
     elif args.cmd == "index":
