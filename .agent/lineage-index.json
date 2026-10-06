@@ -1,0 +1,39 @@
+{
+  "schema": "public-lineage-context-v1",
+  "snapshot_date": "2026-10-06",
+  "publication_boundary": "Never serialize private repository names, object ids, branches, code, runtime state or private evidence into this public repository without explicit publication authorization.",
+  "lineages": [
+    {
+      "id": "free-fabric-public-evidence",
+      "aliases": [
+        "Free Fabric",
+        "public harness",
+        "release reproducibility"
+      ],
+      "key_objects": [
+        {
+          "pr": 1,
+          "role": "cross-Windows/Linux reproducible release archive proof"
+        }
+      ]
+    },
+    {
+      "id": "autopilot-public-control-plane",
+      "aliases": [
+        "AUTOPILOT",
+        "scheduler control plane"
+      ],
+      "key_objects": [
+        {
+          "pr": 2,
+          "role": "public reusable scheduler/control-plane contracts"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    "Public proof carrier is not necessarily the whole product.",
+    "Conceptual similarity is not code-lineage proof.",
+    "Resolve live GitHub metadata and real PR base/head before conclusions."
+  ]
+}
