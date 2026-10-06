@@ -11,6 +11,18 @@
       "role": "agent_tooling"
     },
     {
+      "path": ".cursor/rules/repository-navigation.mdc",
+      "blob": "0794e048f55abf3590390c38b5c75db9f5efc54b",
+      "bytes": 658,
+      "role": "agent_tooling"
+    },
+    {
+      "path": ".github/copilot-instructions.md",
+      "blob": "1efac671cf6ddc5cdfdeb279bcd19e2bebc30014",
+      "bytes": 574,
+      "role": "agent_tooling"
+    },
+    {
       "path": ".github/workflows/ci.yml",
       "blob": "5ffd64fdd2a6f3e1f3ff73550b615f66356cfd46",
       "bytes": 539,
@@ -24,9 +36,21 @@
     },
     {
       "path": "AGENTS.md",
-      "blob": "72bd9e2711c4e8d4e05f370773cae540900a43b7",
-      "bytes": 1135,
-      "role": "documentation"
+      "blob": "ec05419999349d08b0d65e27acbf1076e0697235",
+      "bytes": 2086,
+      "role": "agent_tooling"
+    },
+    {
+      "path": "CLAUDE.md",
+      "blob": "c92840b89e49539ec1da2f95060d962a0687fd17",
+      "bytes": 703,
+      "role": "agent_tooling"
+    },
+    {
+      "path": "GEMINI.md",
+      "blob": "9a0eeffd26f59d4b73fba0d17bcd5d128677b043",
+      "bytes": 588,
+      "role": "agent_tooling"
     },
     {
       "path": "README.md",
@@ -56,7 +80,13 @@
       "path": "docs/AGENT_NAVIGATION.md",
       "blob": "bbc21e68ed7936a34f60353ad98bddfd956d60a6",
       "bytes": 1508,
-      "role": "documentation"
+      "role": "agent_tooling"
+    },
+    {
+      "path": "docs/AGENT_OPERATING_SYSTEM.md",
+      "blob": "10cbf086a9586adf13b6a8faa0e6fbb7c6e844ab",
+      "bytes": 10435,
+      "role": "agent_tooling"
     },
     {
       "path": "harness/common.mjs",
@@ -165,6 +195,12 @@
       "blob": "deac554076be99a6af27f4bc8c69d50e5b4ca1c0",
       "bytes": 2668,
       "role": "test"
+    },
+    {
+      "path": "tools/agent_history.py",
+      "blob": "e5bafa35894387de114935bbcd88607b7074851e",
+      "bytes": 14293,
+      "role": "agent_tooling"
     },
     {
       "path": "tools/build_agent_index.py",
