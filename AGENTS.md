@@ -7,6 +7,7 @@ Before substantial work, read:
 2. `docs/LINEAGE_CONTEXT.md` — privacy-safe idea/system history for this public surface.
 3. `.agent/lineage-index.json` — machine-readable public lineage aliases, anchors and publication boundary.
 4. `.agent/github-objects-index.json` — this public repository's PR/issue/workflow/tag archaeology.
+5. `.agent/pr-ledger.json` — complete all-state PR history for this public repository only, including real base/head SHAs. Read it whenever prior, closed, superseded, or historical PR work could matter; do not infer or publish private account topology from it.
 
 If authenticated owner-authorized tooling exposes related private repositories and the task requires account-wide archaeology, search them too — but never copy private names, metadata, code or evidence into this public repository unless explicitly authorized for publication.
 
