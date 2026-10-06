@@ -1,0 +1,72 @@
+{
+  "schema": "agent-branch-index-v1",
+  "repository": "Ai-b0ss/free-fabric-ci",
+  "canonical_branch": "main",
+  "branch_count": 11,
+  "family_rules": {
+    "main": "current reusable public CI/harness source",
+    "audit": "audit/hardening work",
+    "autopilot": "control-plane development",
+    "probe": "diagnostic probe",
+    "temp": "temporary historical work",
+    "tmp": "temporary historical work",
+    "worker": "worker-specific development"
+  },
+  "branches": [
+    {
+      "name": "audit/control-plane-handoff",
+      "head": "b1131a3d74caec050bdc13253ee1016f5fb600bd",
+      "family": "audit"
+    },
+    {
+      "name": "audit/control-plane-hardening",
+      "head": "f7fd282557daf824449c65d3288cd99b002227bd",
+      "family": "audit"
+    },
+    {
+      "name": "autopilot-control-plane",
+      "head": "dd817f145a5c8a5d6003845ed8c95e6997b27093",
+      "family": "autopilot-control-plane"
+    },
+    {
+      "name": "main",
+      "head": "6fe38d013862f03ec0b2eef6abe51a308ce80f83",
+      "family": "main"
+    },
+    {
+      "name": "probe/circle-secret-presence-20260904",
+      "head": "e75ce8c109689b26eabb619517dc9405d3c5e06c",
+      "family": "probe"
+    },
+    {
+      "name": "temp-misis-run-20260906",
+      "head": "844c5917a16b0966bbf8c0633b7d7480a566c92e",
+      "family": "temp-misis-run-20260906"
+    },
+    {
+      "name": "tmp-misis-schedule-20260913",
+      "head": "0f09ed9e1406506ca1dfbdbf0c17f3460bf199fb",
+      "family": "tmp-misis-schedule-20260913"
+    },
+    {
+      "name": "worker-a/fabric-envelope-contract",
+      "head": "dd817f145a5c8a5d6003845ed8c95e6997b27093",
+      "family": "worker-a"
+    },
+    {
+      "name": "worker-a/provider-outcome-contract",
+      "head": "34cea21d55796bfcdcebe401e8b5d4bb3ec664cb",
+      "family": "worker-a"
+    },
+    {
+      "name": "worker-b/release-proof-normalization",
+      "head": "737a8484abaffc531418e4d4576820ef6e8baee3",
+      "family": "worker-b"
+    },
+    {
+      "name": "worker-d/f52-proof-harness",
+      "head": "0ff3a463baac2323dd7eccc1a886c92a34b81fb9",
+      "family": "worker-d"
+    }
+  ]
+}
