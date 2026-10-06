@@ -1,3 +1,15 @@
+<!-- PUBLIC_ACCOUNT_CONTEXT_V1 -->
+## Public repository account context — mandatory
+
+Before substantial work, read:
+
+1. `docs/ACCOUNT_CONTEXT.md` — privacy-safe account-level boundary.
+2. `.agent/github-objects-index.json` — this public repository's PR/issue/workflow/tag archaeology.
+
+If authenticated owner-authorized tooling exposes related private repositories and the task requires account-wide archaeology, search them too — but never copy private names, metadata, code or evidence into this public repository unless explicitly authorized for publication.
+
+---
+
 <!-- AGENT_BOOTSTRAP_V2 -->
 # READ THIS FIRST — mandatory repository bootstrap
 
