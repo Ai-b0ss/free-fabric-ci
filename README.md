@@ -1,5 +1,7 @@
 # Free Fabric CI
 
+> **Agent navigation:** start with [`AGENTS.md`](AGENTS.md), then [`docs/AGENT_NAVIGATION.md`](docs/AGENT_NAVIGATION.md). Exact branch heads are indexed in [`.agent/branch-index.json`](.agent/branch-index.json); main-branch files/blobs are in [`.agent/file-index.json`](.agent/file-index.json). For any branch/SHA, run `python tools/build_agent_index.py --ref "<branch-or-SHA>"` to generate exact line counts and symbol locations.
+
 Public reusable CI, acceptance, packaging and deployment tooling for the Free Fabric project family.
 
 This repository intentionally contains only components that are safe and useful as public software: protocol-contract acceptance harnesses, loopback-only transport guards, release/archive verification, cross-platform regressions, and deployment/packaging tooling.
