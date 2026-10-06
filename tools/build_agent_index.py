@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import re
 import subprocess
 from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / ".agent" / "local-code-index.json"
 
 TEXT_EXTS = {
     ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".json", ".jsonc",
@@ -16,6 +14,7 @@ TEXT_EXTS = {
     ".css", ".scss", ".ps1", ".sh", ".bash", ".cmd", ".bat", ".cs", ".java",
     ".go", ".rs", ".rb", ".php", ".vue",
 }
+SPECIAL_TEXT_NAMES = {"Dockerfile", "Makefile", "Procfile"}
 SYMBOL_PATTERNS = [
     ("class", re.compile(r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)")),
     ("def", re.compile(r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")),
@@ -26,40 +25,52 @@ SYMBOL_PATTERNS = [
     ("powershell_function", re.compile(r"^\s*function\s+([A-Za-z_][A-Za-z0-9_-]*)\b", re.I)),
 ]
 
-def git(*args: str) -> str:
-    try:
-        return subprocess.check_output(
-            ["git", "-C", str(ROOT), *args],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-    except Exception:
-        return ""
+def run_git(root: Path, *args: str, binary: bool = False):
+    return subprocess.check_output(
+        ["git", "-C", str(root), *args],
+        stderr=subprocess.PIPE,
+        text=not binary,
+    )
 
-def tracked_files() -> list[Path]:
-    raw = subprocess.check_output(["git", "-C", str(ROOT), "ls-files", "-z"])
-    result = []
-    for item in raw.split(b"\0"):
-        if not item:
+def repo_root() -> Path:
+    raw = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True)
+    return Path(raw.strip()).resolve()
+
+def list_blobs(root: Path, ref: str) -> list[dict]:
+    raw = run_git(root, "ls-tree", "-r", "-z", "--long", ref, binary=True)
+    rows = []
+    for record in raw.split(b"\0"):
+        if not record:
             continue
-        path = ROOT / item.decode("utf-8", "surrogateescape")
-        if path.is_file():
-            result.append(path)
-    return result
+        meta, path_raw = record.split(b"\t", 1)
+        parts = meta.decode("ascii").split()
+        if len(parts) < 4 or parts[1] != "blob":
+            continue
+        mode, _, blob, size_raw = parts[:4]
+        path = path_raw.decode("utf-8", "surrogateescape")
+        rows.append({
+            "path": path,
+            "blob": blob,
+            "mode": mode,
+            "bytes": None if size_raw == "-" else int(size_raw),
+        })
+    return rows
 
-def analyze(path: Path) -> dict:
-    rel = path.relative_to(ROOT).as_posix()
-    data = path.read_bytes()
-    base = {
-        "path": rel,
+def analyze(root: Path, row: dict) -> dict:
+    path = row["path"]
+    data = run_git(root, "cat-file", "-p", row["blob"], binary=True)
+    result = {
+        "path": path,
+        "blob": row["blob"],
         "bytes": len(data),
         "sha256": hashlib.sha256(data).hexdigest(),
     }
+    suffix = Path(path).suffix.lower()
     if b"\0" in data[:8192] or (
-        path.suffix.lower() not in TEXT_EXTS
-        and path.name not in {"Dockerfile", "Makefile", "Procfile"}
+        suffix not in TEXT_EXTS
+        and Path(path).name not in SPECIAL_TEXT_NAMES
     ):
-        return {**base, "kind": "binary_or_unindexed"}
+        return {**result, "kind": "binary_or_unindexed"}
 
     lines = data.decode("utf-8", "replace").splitlines()
     symbols = []
@@ -72,29 +83,51 @@ def analyze(path: Path) -> dict:
                 )
                 break
     return {
-        **base,
+        **result,
         "kind": "text",
         "lines": len(lines),
         "symbols": symbols,
     }
 
 def main() -> None:
-    records = [analyze(path) for path in tracked_files()]
-    records.sort(key=lambda row: row["path"])
+    parser = argparse.ArgumentParser(
+        description="Build an exact branch/ref code index without checking it out."
+    )
+    parser.add_argument(
+        "--ref",
+        default="HEAD",
+        help="Git branch, tag or commit to index (default: HEAD)",
+    )
+    parser.add_argument(
+        "--out",
+        default=".agent/local-code-index.json",
+        help="Output path relative to repo root",
+    )
+    args = parser.parse_args()
+
+    root = repo_root()
+    commit = run_git(root, "rev-parse", f"{args.ref}^{{commit}}").strip()
+    rows = list_blobs(root, args.ref)
+    files = [analyze(root, row) for row in rows]
+    files.sort(key=lambda item: item["path"])
+
     payload = {
-        "schema": "agent-local-code-index-v1",
-        "branch": git("branch", "--show-current") or None,
-        "head": git("rev-parse", "HEAD") or None,
-        "tracked_files": len(records),
-        "text_files": sum(row["kind"] == "text" for row in records),
-        "files": records,
+        "schema": "agent-ref-code-index-v2",
+        "requested_ref": args.ref,
+        "resolved_commit": commit,
+        "tracked_files": len(files),
+        "text_files": sum(item["kind"] == "text" for item in files),
+        "files": files,
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(
+    out = root / args.out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print(f"Wrote {OUT.relative_to(ROOT)}: {payload['tracked_files']} files")
+    print(
+        f"Wrote {out.relative_to(root)} for {args.ref} @ {commit}: {len(files)} files"
+    )
 
 if __name__ == "__main__":
     main()
