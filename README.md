@@ -1,6 +1,6 @@
 # Free Fabric CI
 
-> **Agent navigation:** start with [`AGENTS.md`](AGENTS.md), then [`docs/AGENT_NAVIGATION.md`](docs/AGENT_NAVIGATION.md). Branch names and non-main head snapshots are indexed in [`.agent/branch-index.json`](.agent/branch-index.json); `main` is resolved at read time. A bootstrap map of main-branch files/blobs is in [`.agent/file-index.json`](.agent/file-index.json). For any branch/SHA, run `python tools/build_agent_index.py --ref "<branch-or-SHA>"` to generate exact line counts and symbol locations.
+> **Agent navigation:** start with [`AGENTS.md`](AGENTS.md), then [`docs/AGENT_OPERATING_SYSTEM.md`](docs/AGENT_OPERATING_SYSTEM.md), [`docs/AGENT_NAVIGATION.md`](docs/AGENT_NAVIGATION.md) and [`docs/REPOSITORY_INVENTORY.md`](docs/REPOSITORY_INVENTORY.md). Exact branch heads are catalogued in [`.agent/branch-index.json`](.agent/branch-index.json); current `main` files/blobs are in [`.agent/file-index.json`](.agent/file-index.json). Search all branch tips and deleted/older committed work with `tools/agent_history.py`; for exact lines/symbols on any ref run `python tools/build_agent_index.py --ref "<branch-or-SHA>"`.
 
 Public reusable CI, acceptance, packaging and deployment tooling for the Free Fabric project family.
 
