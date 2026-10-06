@@ -75,5 +75,13 @@
         "run_id": 34033200527
       }
     ]
+  },
+  "complete_pr_ledger": {
+    "path": ".agent/pr-ledger.json",
+    "snapshot_date": "2026-10-06",
+    "total": 5,
+    "scope": "all PR states in this public repository only",
+    "privacy": "self-history only; does not expose private account topology",
+    "rule": "Use this ledger for exhaustive local PR archaeology and real base/head SHA lookup; re-fetch the live PR before freshness-sensitive action."
   }
 }
