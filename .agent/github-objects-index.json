@@ -59,5 +59,21 @@
       "note": "Reusable AUTOPILOT scheduler/control-plane contracts; closely related to private Kontur v4.1 control-plane work without exposing private state."
     }
   ],
-  "public_boundary": "Do not add private product names, state, credentials, account identifiers or private evidence to this public index."
+  "public_boundary": "Do not add private product names, state, credentials, account identifiers or private evidence to this public index.",
+  "workflow_observations": {
+    "PR#1_head_737a8484abaffc531418e4d4576820ef6e8baee3": [
+      {
+        "name": "Free Fabric CI",
+        "conclusion": "success",
+        "run_id": 33728008982
+      }
+    ],
+    "PR#2_head_dd817f145a5c8a5d6003845ed8c95e6997b27093": [
+      {
+        "name": "Free Fabric CI",
+        "conclusion": "success",
+        "run_id": 34033200527
+      }
+    ]
+  }
 }
