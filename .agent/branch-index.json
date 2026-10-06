@@ -30,8 +30,9 @@
     },
     {
       "name": "main",
-      "head": "6fe38d013862f03ec0b2eef6abe51a308ce80f83",
-      "family": "main"
+      "head": null,
+      "family": "main",
+      "resolve_at_read_time": true
     },
     {
       "name": "probe/circle-secret-presence-20260904",
@@ -68,5 +69,6 @@
       "head": "0ff3a463baac2323dd7eccc1a886c92a34b81fb9",
       "family": "worker-d"
     }
-  ]
+  ],
+  "main_resolution": "The main branch is dynamic. Resolve its current commit at read time with `git rev-parse main` or the GitHub branch ref. Non-main SHAs are navigation snapshots; re-resolve any branch that may have moved."
 }
