@@ -1,9 +1,15 @@
 {
-  "schema": "agent-file-index-v1",
+  "schema": "agent-file-index-v2",
   "repository": "Ai-b0ss/free-fabric-ci",
   "branch": "main",
-  "note": "This public repo contains reusable CI/harness code, not private product implementations. Run tools/build_agent_index.py for exact line/symbol positions.",
+  "self_indexing": "`.agent/file-index.json` is intentionally omitted to avoid recursive self-staleness.",
   "files": [
+    {
+      "path": ".agent/branch-index.json",
+      "blob": "b6112d5e7c8545f1ebc08d4f94307f25a7fb6ac1",
+      "bytes": 2088,
+      "role": "agent_tooling"
+    },
     {
       "path": ".github/workflows/ci.yml",
       "blob": "5ffd64fdd2a6f3e1f3ff73550b615f66356cfd46",
@@ -15,6 +21,12 @@
       "blob": "8befe0afb33e5bf204bbf7e8fb1efd1cbc420607",
       "bytes": 7751,
       "role": "ci"
+    },
+    {
+      "path": "AGENTS.md",
+      "blob": "72bd9e2711c4e8d4e05f370773cae540900a43b7",
+      "bytes": 1135,
+      "role": "documentation"
     },
     {
       "path": "README.md",
@@ -39,6 +51,12 @@
       "blob": "ee12d6ef270f925f59520fad5ef8f21f89364659",
       "bytes": 2308,
       "role": "desktop_release_runtime"
+    },
+    {
+      "path": "docs/AGENT_NAVIGATION.md",
+      "blob": "bbc21e68ed7936a34f60353ad98bddfd956d60a6",
+      "bytes": 1508,
+      "role": "documentation"
     },
     {
       "path": "harness/common.mjs",
@@ -150,8 +168,8 @@
     },
     {
       "path": "tools/build_agent_index.py",
-      "blob": "6e97262afe88d48dd498ec6be3cdaf8d748259ff",
-      "bytes": 3455,
+      "blob": "9ad5e056e09909d4eeb0735e479d8cff7cd8a446",
+      "bytes": 4539,
       "role": "agent_tooling"
     }
   ]
