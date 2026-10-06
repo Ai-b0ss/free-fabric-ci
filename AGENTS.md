@@ -4,7 +4,9 @@
 Before substantial work, read:
 
 1. `docs/ACCOUNT_CONTEXT.md` — privacy-safe account-level boundary.
-2. `.agent/github-objects-index.json` — this public repository's PR/issue/workflow/tag archaeology.
+2. `docs/LINEAGE_CONTEXT.md` — privacy-safe idea/system history for this public surface.
+3. `.agent/lineage-index.json` — machine-readable public lineage aliases, anchors and publication boundary.
+4. `.agent/github-objects-index.json` — this public repository's PR/issue/workflow/tag archaeology.
 
 If authenticated owner-authorized tooling exposes related private repositories and the task requires account-wide archaeology, search them too — but never copy private names, metadata, code or evidence into this public repository unless explicitly authorized for publication.
 
