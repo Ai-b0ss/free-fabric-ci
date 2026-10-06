@@ -1,3 +1,19 @@
+<!-- AGENT_BOOTSTRAP_V2 -->
+# READ THIS FIRST — mandatory repository bootstrap
+
+For every substantial task in this repository, **before designing or editing**:
+
+1. Read [docs/AGENT_OPERATING_SYSTEM.md](docs/AGENT_OPERATING_SYSTEM.md) — this is the all-work recovery and source-authority contract.
+2. Read [docs/AGENT_NAVIGATION.md](docs/AGENT_NAVIGATION.md) — repository-specific architecture map.
+3. Pin the exact branch and commit; do not reason from a branch name alone.
+4. If prior/abandoned/forgotten work may exist, search branch tips **and full reachable Git history** with `tools/agent_history.py` before implementing a replacement.
+5. For exact code locations on any ref, run `python tools/build_agent_index.py --ref "<branch-or-SHA>"`.
+6. Never conclude "this was never implemented" from `main` alone.
+
+The navigation files in `main` are deliberately external to old evidence branches so those historical heads remain immutable.
+
+---
+
 # AGENTS.md — Free Fabric CI
 
 ## Mandatory orientation
