@@ -19,4 +19,4 @@ Treat harness files as executable protocol fixtures. When editing one side of a 
 All branch heads are in `.agent/branch-index.json`. Temporary branches are historical unless explicitly selected by a task. `main` remains the public integration baseline.
 
 ## Line-level navigation
-Run `python tools/build_agent_index.py`; use generated symbol lines as exact jump points for the checked-out branch. Regenerate after every branch switch.
+Run `python tools/build_agent_index.py --ref "<branch-or-SHA>"`; use generated symbol lines as exact jump points for the checked-out branch. Regenerate after every branch switch.
