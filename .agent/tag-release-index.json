@@ -1,0 +1,20 @@
+{
+  "schema": "tag-release-index-v1",
+  "snapshot_date": "2026-10-07",
+  "repository": "Ai-b0ss/free-fabric-ci",
+  "visibility_context": "public-repository-self-history-only",
+  "privacy_note": "Contains only tags/releases/assets already public in this repository. Does not expose private account topology.",
+  "completeness": {
+    "tag_count": 0,
+    "release_count": 0,
+    "source": "live Git refs/tags namespace + GitHub Releases API",
+    "complete": true
+  },
+  "rules": [
+    "Use target_sha for exact tagged commit/object.",
+    "Release asset digest binds the exact uploaded asset when GitHub provides it.",
+    "Do not infer private account topology from this public index."
+  ],
+  "tags": [],
+  "releases": []
+}
