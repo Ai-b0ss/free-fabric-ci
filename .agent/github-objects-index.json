@@ -83,5 +83,14 @@
     "scope": "all PR states in this public repository only",
     "privacy": "self-history only; does not expose private account topology",
     "rule": "Use this ledger for exhaustive local PR archaeology and real base/head SHA lookup; re-fetch the live PR before freshness-sensitive action."
+  },
+  "complete_tag_release_index": {
+    "path": ".agent/tag-release-index.json",
+    "snapshot_date": "2026-10-07",
+    "tags": 0,
+    "releases": 0,
+    "scope": "all tags and GitHub Releases in this public repository only",
+    "privacy": "self-history only; does not expose private account topology",
+    "rule": "Use for exact local release/tag archaeology; re-fetch live refs/releases before freshness-sensitive action."
   }
 }
