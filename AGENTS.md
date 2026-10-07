@@ -10,6 +10,8 @@ Before substantial work, read:
 5. `.agent/pr-ledger.json` — complete all-state PR history for this public repository only, including real base/head SHAs. Read it whenever prior, closed, superseded, or historical PR work could matter; do not infer or publish private account topology from it.
 6. `.agent/tag-release-index.json` — exact public tag/release history for this repository, including terminal tag targets and release-asset digests. Read it whenever a version, release, baseline, historical archive, or published artifact may matter; do not infer or publish private account topology from it.
 
+These are navigation snapshots, not live authority: re-resolve current GitHub state when freshness matters. Any SHA, branch head, PR state, counter, test total, or "current status" written in README/docs is evidence for its recorded snapshot only unless it matches the live object you just resolved.
+
 If authenticated owner-authorized tooling exposes related private repositories and the task requires account-wide archaeology, search them too — but never copy private names, metadata, code or evidence into this public repository unless explicitly authorized for publication.
 
 ---
