@@ -5,15 +5,39 @@
   "self_indexing": "`.agent/file-index.json` is intentionally omitted to avoid recursive self-staleness.",
   "files": [
     {
+      "path": ".agent/branch-index.json",
+      "blob": "4b94d622d1f2ac89183c978b3eedf23ccd9383a7",
+      "bytes": 2313,
+      "role": "agent_tooling"
+    },
+    {
+      "path": ".agent/github-objects-index.json",
+      "blob": "8e514fc67247fa372984f7c13aa22a7a8c70be87",
+      "bytes": 3128,
+      "role": "agent_tooling"
+    },
+    {
+      "path": ".agent/lineage-index.json",
+      "blob": "2d641a94734003cda3275f52dd76711eaa6c650c",
+      "bytes": 1113,
+      "role": "agent_tooling"
+    },
+    {
+      "path": ".agent/pr-ledger.json",
+      "blob": "d8afa4bae2f4793112e1320592034d162ca808a6",
+      "bytes": 6061,
+      "role": "agent_tooling"
+    },
+    {
       "path": ".agent/README.md",
       "blob": "c57c6a47ad5a0badf634cfc8e2a006a1ef30e344",
       "bytes": 1549,
       "role": "agent_tooling"
     },
     {
-      "path": ".agent/branch-index.json",
-      "blob": "4b94d622d1f2ac89183c978b3eedf23ccd9383a7",
-      "bytes": 2313,
+      "path": ".agent/tag-release-index.json",
+      "blob": "42e0a723f9bc66d738cae893f18584ddaf4d5def",
+      "bytes": 724,
       "role": "agent_tooling"
     },
     {
@@ -42,8 +66,8 @@
     },
     {
       "path": "AGENTS.md",
-      "blob": "ec05419999349d08b0d65e27acbf1076e0697235",
-      "bytes": 2086,
+      "blob": "17cf685acc2f0d65537a92612d46cad890d2516d",
+      "bytes": 3436,
       "role": "agent_tooling"
     },
     {
@@ -51,18 +75,6 @@
       "blob": "c92840b89e49539ec1da2f95060d962a0687fd17",
       "bytes": 703,
       "role": "agent_tooling"
-    },
-    {
-      "path": "GEMINI.md",
-      "blob": "9a0eeffd26f59d4b73fba0d17bcd5d128677b043",
-      "bytes": 588,
-      "role": "agent_tooling"
-    },
-    {
-      "path": "README.md",
-      "blob": "468cd8625e486069c9c3318fb18fc437729559cf",
-      "bytes": 1692,
-      "role": "documentation"
     },
     {
       "path": "desktop/build_release.py",
@@ -83,6 +95,12 @@
       "role": "desktop_release_runtime"
     },
     {
+      "path": "docs/ACCOUNT_CONTEXT.md",
+      "blob": "e230771f9481ff257e936499d4499ca12be17687",
+      "bytes": 1079,
+      "role": "documentation"
+    },
+    {
       "path": "docs/AGENT_NAVIGATION.md",
       "blob": "bbc21e68ed7936a34f60353ad98bddfd956d60a6",
       "bytes": 1508,
@@ -95,9 +113,21 @@
       "role": "agent_tooling"
     },
     {
+      "path": "docs/LINEAGE_CONTEXT.md",
+      "blob": "23e6e2997167d16795ea3160b9157274e7af5066",
+      "bytes": 1922,
+      "role": "documentation"
+    },
+    {
       "path": "docs/REPOSITORY_INVENTORY.md",
       "blob": "21d986dd5ef71875003a687a586c6d0673abb729",
       "bytes": 3560,
+      "role": "agent_tooling"
+    },
+    {
+      "path": "GEMINI.md",
+      "blob": "9a0eeffd26f59d4b73fba0d17bcd5d128677b043",
+      "bytes": 588,
       "role": "agent_tooling"
     },
     {
@@ -171,6 +201,12 @@
       "blob": "e1cb14d001861c700441386d3a34d03a5e83a16e",
       "bytes": 5533,
       "role": "acceptance_harness"
+    },
+    {
+      "path": "README.md",
+      "blob": "468cd8625e486069c9c3318fb18fc437729559cf",
+      "bytes": 1692,
+      "role": "documentation"
     },
     {
       "path": "tests/test_f52_adversarial.py",
