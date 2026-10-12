@@ -1,0 +1,84 @@
+name: One-off MISIS timetable verification
+on:
+  push:
+    branches:
+      - audit/misis-20261012
+permissions:
+  contents: write
+jobs:
+  extract:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install legacy XLS reader
+        run: python -m pip install --disable-pip-version-check requests==2.32.3 xlrd==2.0.2
+      - name: Download official XLS and save group-specific extraction
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, pathlib, subprocess, requests, xlrd
+          
+          URLS = [
+            "https://misis.ru/files/-/78e54f7f680db8ec59b3e22308ac792c/itkn-081026.xls",
+            "https://misis.ru/upload/Student/raspisanie/Institut_kompyuternykh_nauk.xls",
+          ]
+          errors = []
+          data = None
+          url_used = None
+          for url in URLS:
+              try:
+                  res = requests.get(url, timeout=(15, 60), headers={"User-Agent": "Mozilla/5.0 MISIS schedule verification"})
+                  res.raise_for_status()
+                  if not res.content.startswith(bytes.fromhex("d0cf11e0a1b11ae1")):
+                      raise ValueError("Not a valid legacy XLS header: " + repr(res.content[:30]))
+                  data = res.content
+                  url_used = url
+                  break
+              except Exception as exc:
+                  errors.append(f"{url}: {type(exc).__name__}: {exc}")
+          if data is None:
+              raise RuntimeError("All download attempts failed: " + "; ".join(errors))
+          book = xlrd.open_workbook(file_contents=data, on_demand=True, formatting_info=False)
+          target = "ББИ-26-6-2"
+          report = {
+              "source_url": url_used, "sha256": hashlib.sha256(data).hexdigest(),
+              "byte_count": len(data), "source_name": "itkn-081026.xls",
+              "sheets": [], "match_count": 0, "errors": errors
+          }
+          for sh in book.sheets():
+              meta = {"name": sh.name, "nrows": sh.nrows, "ncols": sh.ncols, "matches": [], "extracted": []}
+              for row in range(sh.nrows):
+                  for col in range(sh.ncols):
+                      if str(sh.cell_value(row, col)).strip() == target:
+                          meta["matches"].append({"row": row + 1, "col": col + 1})
+              if meta["matches"]:
+                  cols = sorted({m["col"] - 1 for m in meta["matches"]})
+                  for row in range(sh.nrows):
+                      vals = [str(sh.cell_value(row, col)).strip() for col in range(sh.ncols)]
+                      main = [vals[c] for c in cols]
+                      near = {str(c + 1): vals[c] for k in cols for c in range(max(0, k - 1), min(sh.ncols, k + 3)) if vals[c]}
+                      prefix = {str(c + 1): vals[c] for c in range(min(4, sh.ncols)) if vals[c]}
+                      if main != [""] * len(main) or prefix:
+                          meta["extracted"].append({"row": row + 1, "prefix": prefix, "target": main, "adjacent": near})
+                  report["match_count"] += len(meta["matches"])
+              report["sheets"].append(meta)
+          if report["match_count"] == 0:
+              raise RuntimeError("Target group not found in: " + ", ".join(book.sheet_names()))
+          out = pathlib.Path("misis-audit-20261012.json")
+          out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("SOURCE", url_used)
+          print("SHA256", report["sha256"], "BYTES", len(data))
+          print("GROUP_MATCHES", report["match_count"])
+          for item in report["sheets"]:
+              print("SHEET", item["name"], item["nrows"], item["ncols"], "MATCHES", item["matches"])
+              for line in item["extracted"][:12]:
+                  print("ROW", json.dumps(line, ensure_ascii=False))
+          subprocess.run(["git", "config", "user.name", "misis-schedule-audit"], check=True)
+          subprocess.run(["git", "config", "user.email", "misis-audit@users.noreply.github.com"], check=True)
+          subprocess.run(["git", "add", str(out)], check=True)
+          subprocess.run(["git", "commit", "-m", "audit: record MISIS 2026-10-08 schedule extraction"], check=True)
+          subprocess.run(["git", "push", "origin", "HEAD:refs/heads/audit/misis-20261012"], check=True)
+          
+          PY
