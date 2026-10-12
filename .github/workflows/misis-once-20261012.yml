@@ -58,7 +58,7 @@ jobs:
                   for row in range(sh.nrows):
                       vals = [str(sh.cell_value(row, col)).strip() for col in range(sh.ncols)]
                       main = [vals[c] for c in cols]
-                      near = {str(c + 1): vals[c] for k in cols for c in range(max(0, k - 1), min(sh.ncols, k + 3)) if vals[c]}
+                      near = {str(c + 1): vals[c] for k in cols for c in range(max(0, k - 1), min(sh.ncols, k + 5)) if vals[c]}
                       prefix = {str(c + 1): vals[c] for c in range(min(4, sh.ncols)) if vals[c]}
                       if main != [""] * len(main) or prefix:
                           meta["extracted"].append({"row": row + 1, "prefix": prefix, "target": main, "adjacent": near})
