@@ -1,0 +1,41 @@
+name: Antigravity Windows v3 smoke
+on:
+  push:
+    branches: [ci/antigravity-health-repair-v3-smoke]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Windows runner and parser smoke
+        shell: powershell
+        run: |
+          Write-Host "WINDOWS_RUNNER_STARTED"
+          Write-Host ("PS=" + $PSVersionTable.PSVersion)
+          Write-Host ("OS=" + [Environment]::OSVersion.VersionString)
+          $files = @('Antigravity-Health-Repair.ps1', 'Test-Desktop.ps1')
+          $dir = 'tests/antigravity-health-repair-v3'
+          if (!(Test-Path "$dir/Antigravity-Health-Repair.ps1")) {
+            Write-Host 'PACKAGE_NOT_UPLOADED_YET'
+            exit 2
+          }
+          foreach ($name in $files) {
+            $tokens=$null; $errors=$null
+            $null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "$dir/$name"), [ref]$tokens, [ref]$errors)
+            foreach($err in $errors) { Write-Host ("PARSER_ERROR: " + $err.Message) }
+            if($errors.Count -gt 0) { exit 1 }
+            Write-Host ("PARSE_OK: " + $name)
+          }
+      - name: Diagnostic only on clean Windows
+        shell: powershell
+        run: |
+          $dir='tests/antigravity-health-repair-v3'
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$dir/Antigravity-Health-Repair.ps1"
+          $exitCode=$LASTEXITCODE
+          Write-Host ("DIAGNOSTIC_EXIT=" + $exitCode)
+          if($exitCode -ne 2) { throw "Expected NOT_INSTALLED=2, actual=$exitCode" }
+          Write-Host 'SMOKE_PASS_NO_PATCH_NO_INSTALL'
