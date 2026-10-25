@@ -44,6 +44,16 @@ $script:PatcherRef = '90498f50353d414232f593dffe88899bc80b6312'
 # It hashes the Git object (ASCII 'blob <length>\0' + the raw file bytes).
 $script:ExpectedPatcherBlobSha1 = '99c61225c78ba3b66eca71fb0c0e278d1bf0bf27'
 
+function GetPortableSha256([string]$p) {
+    $stream=[System.IO.File]::OpenRead($p)
+    $sha=[System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','')
+    } finally {
+        $stream.Dispose()
+        $sha.Dispose()
+    }
+}
 function Say([string]$code, [string]$details='') {
     $line = ('{0,-28} {1}' -f $code,$details)
     Write-Host $line
@@ -278,7 +288,7 @@ function FetchPinnedPatcher {
     }
     $script:Patcher = $src
     Say 'PATCHER_SOURCE' ('QNIX commit '+$script:PatcherRef)
-    Say 'PATCHER_SHA256' (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash
+    Say 'PATCHER_SHA256' (GetPortableSha256 $src)
 }
 function TargetArgs([string]$kind, [string]$command) {
     if($kind -eq 'cli') { return @($command,'cli','--path-cli',$script:CLI) }
@@ -311,20 +321,20 @@ function PatchTarget([string]$kind) {
     $file = if($kind -eq 'cli') {$script:CLI} else {$script:Manager}
     $backupDir=Join-Path $work 'pristine-backups'
     [void](New-Item -ItemType Directory -Path $backupDir -Force)
-    $hash=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+    $hash=(GetPortableSha256 $file)
     $backup=Join-Path $backupDir ($kind+'-'+$hash+'.exe')
     if(-not (Test-Path -LiteralPath $backup)) { Copy-Item -LiteralPath $file -Destination $backup -ErrorAction Stop }
-    if((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $hash) { throw 'Pristine backup verification failed' }
+    if((GetPortableSha256 $backup) -ne $hash) { throw 'Pristine backup verification failed' }
     Say ('BACKUP_'+$kind.ToUpperInvariant()) $backup
     $r=PythonPatcher (TargetArgs $kind 'patch') 70
     if($r.ExitCode -ne 0) {
         Say 'PATCH_ERROR' ($kind+' exit='+$r.ExitCode)
         # QNIX has its own rollback. Confirm its result, and restore our
         # independently verified backup if it left a partially modified file.
-        if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $hash) {
+        if((GetPortableSha256 $file) -ne $hash) {
             if(-not (IsRunning $kind)) {
                 Copy-Item -LiteralPath $backup -Destination $file -Force
-                if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $hash) {
+                if((GetPortableSha256 $file) -ne $hash) {
                     throw 'Emergency pristine restore failed; manual repair required'
                 }
                 Say 'PATCH_FAILURE_RESTORED' $kind
@@ -337,7 +347,7 @@ function PatchTarget([string]$kind) {
     if($after -eq 'patched') { $script:NewPatches+= $kind;return $true }
     if(-not (IsRunning $kind)) {
         Copy-Item -LiteralPath $backup -Destination $file -Force
-        if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -eq $hash) {
+        if((GetPortableSha256 $file) -eq $hash) {
             Say 'UNVERIFIED_PATCH_RESTORED' $kind
         } else { throw 'Failed to restore pristine file after unverified patch' }
     }
