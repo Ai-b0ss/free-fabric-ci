@@ -40,7 +40,8 @@ jobs:
           $f=(Resolve-Path 'ci/antigravity-smoke/v3/Antigravity-Health-Repair.ps1').Path
           $o=Join-Path $env:RUNNER_TEMP 'diag-stdout.txt'
           $e=Join-Path $env:RUNNER_TEMP 'diag-stderr.txt'
-          $p=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $f + '"'),'-ModelTimeoutSeconds','15') -Wait -PassThru -RedirectStandardOutput $o -RedirectStandardError $e
+          $p=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $f + '"'),'-ModelTimeoutSeconds','15') -PassThru -RedirectStandardOutput $o -RedirectStandardError $e
+          if(-not $p.WaitForExit(70000)) { & taskkill.exe /PID $p.Id /T /F | Out-Null; throw 'Clean-runner diagnostic timed out' }
           $stdout=Get-Content $o -Raw -ErrorAction SilentlyContinue
           $stderr=Get-Content $e -Raw -ErrorAction SilentlyContinue
           Write-Host "DIAGNOSTIC_EXIT=$($p.ExitCode)"
@@ -65,8 +66,11 @@ jobs:
           $f=(Resolve-Path 'ci/antigravity-smoke/v3/Antigravity-Health-Repair.ps1').Path
           $o=Join-Path $env:RUNNER_TEMP 'diag2-stdout.txt'
           $e=Join-Path $env:RUNNER_TEMP 'diag2-stderr.txt'
-          $p=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $f + '"'),'-ModelTimeoutSeconds','15') -PassThru -Wait -RedirectStandardOutput $o -RedirectStandardError $e
-          Write-Host "POST_INSTALL_EXIT=$($p.ExitCode)"
+          $p=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $f + '"'),'-ModelTimeoutSeconds','15') -PassThru -RedirectStandardOutput $o -RedirectStandardError $e
+          if(-not $p.WaitForExit(80000)) {
+            Write-Host "POST_INSTALL_TIMED_OUT PID=$($p.Id)"
+            & taskkill.exe /PID $p.Id /T /F | Out-Null
+          } else { Write-Host "POST_INSTALL_EXIT=$($p.ExitCode)" }
           Get-Content $o -ErrorAction SilentlyContinue
           Get-Content $e -ErrorAction SilentlyContinue
           Write-Host "AGY_PRESENT=$(Test-Path (Join-Path $env:LOCALAPPDATA 'agy/bin/agy.exe'))"
@@ -76,4 +80,47 @@ jobs:
           name: antigravity-windows-logs
           path: |
             ${{ runner.temp }}/diag*.txt
+          if-no-files-found: ignore
+
+  desktop-install-probe:
+    runs-on: windows-latest
+    timeout-minutes: 14
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify official Desktop 2.26.0
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://storage.googleapis.com/antigravity-public/antigravity-hub/2.26.0-6546645232517120/windows-x64/Antigravity-x64.exe'
+          $out=Join-Path $env:RUNNER_TEMP 'Antigravity-x64.exe'
+          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing -TimeoutSec 120
+          $h=(Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($h -ne '2444dfef9ff280b3c418399ff259c66684c98886bece26290484cf80c33756c9'){throw "Installer checksum unexpected: $h"}
+          Write-Host 'OFFICIAL_DESKTOP_INSTALLER_HASH_VERIFIED'
+          $p=Start-Process -FilePath $out -ArgumentList '/S' -PassThru
+          if(-not $p.WaitForExit(140000)){& taskkill.exe /PID $p.Id /T /F | Out-Null;throw 'Desktop installer timed out'}
+          Write-Host "DESKTOP_INSTALL_EXIT=$($p.ExitCode)"
+          if($p.ExitCode -ne 0){throw "Installation returned $($p.ExitCode)"}
+      - name: Launch Desktop smoke probe without account secrets
+        run: |
+          $exe=Join-Path $env:LOCALAPPDATA 'Programs/antigravity/Antigravity.exe'
+          Write-Host "DESKTOP_BINARY_PRESENT=$(Test-Path $exe)"
+          if(-not (Test-Path $exe)){Write-Host 'DESKTOP_UNAVAILABLE';exit 0}
+          $probe=(Resolve-Path 'ci/antigravity-smoke/v3/Test-Desktop.ps1').Path
+          $o=Join-Path $env:RUNNER_TEMP 'desktop-stdout.txt'
+          $e=Join-Path $env:RUNNER_TEMP 'desktop-stderr.txt'
+          $arg=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $probe + '"'),'-ExePath',('"' + $exe + '"'),'-TimeoutSeconds','15','-CloseIfStarted')
+          $p=Start-Process 'powershell.exe' -ArgumentList $arg -PassThru -RedirectStandardOutput $o -RedirectStandardError $e
+          if(-not $p.WaitForExit(70000)) { Write-Host 'DESKTOP_PROBE_TIMED_OUT'; & taskkill.exe /PID $p.Id /T /F | Out-Null }
+          Get-Content $o -ErrorAction SilentlyContinue
+          Get-Content $e -ErrorAction SilentlyContinue
+          Write-Host 'DESKTOP_PROBE_FINISHED'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: antigravity-desktop-probe
+          path: ${{ runner.temp }}/desktop-*.txt
           if-no-files-found: ignore
