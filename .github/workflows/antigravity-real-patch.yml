@@ -1,0 +1,94 @@
+name: Antigravity real QNIX patch and restore
+
+on:
+  push:
+    branches:
+      - test/antigravity-health-v3-windows-20261025
+    paths:
+      - .github/workflows/antigravity-real-patch.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cli-patch-restore:
+    runs-on: windows-latest
+    timeout-minutes: 16
+    steps:
+      - name: Download official Antigravity CLI installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'agy-official-install.ps1'
+          Invoke-WebRequest 'https://antigravity.google/cli/install.ps1' -OutFile $installer -TimeoutSec 40
+          if((Get-Item $installer).Length -lt 1000){ throw 'Unexpectedly small official installer' }
+          Write-Host "INSTALLER_DOWNLOADED_BYTES=$((Get-Item $installer).Length)"
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
+          if($LASTEXITCODE -ne 0){ throw "OFFICIAL_CLI_INSTALL_FAILED exit=$LASTEXITCODE" }
+          $cli = Join-Path $env:LOCALAPPDATA 'agy\bin\agy.exe'
+          if(-not (Test-Path $cli)){ throw 'OFFICIAL_CLI_BINARY_MISSING' }
+          Write-Host "OFFICIAL_CLI_PRESENT=true"
+          Write-Host "OFFICIAL_CLI_SHA256=$((Get-FileHash $cli -Algorithm SHA256).Hash)"
+          & $cli --version
+          if($LASTEXITCODE -ne 0){throw 'CLI version command failed'}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify pinned QNIX source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = '90498f50353d414232f593dffe88899bc80b6312'
+          $src = Join-Path $env:RUNNER_TEMP 'qnix-manager.py'
+          Invoke-WebRequest "https://raw.githubusercontent.com/QNIX-Dev/eligibility-antigravity-patcher/$sha/manager.py" -OutFile $src -TimeoutSec 50
+          $b = [IO.File]::ReadAllBytes($src)
+          $prefix = [Text.Encoding]::ASCII.GetBytes("blob $($b.Length)" + [char]0)
+          $obj = New-Object byte[] ($prefix.Length + $b.Length)
+          [Array]::Copy($prefix,0,$obj,0,$prefix.Length)
+          [Array]::Copy($b,0,$obj,$prefix.Length,$b.Length)
+          $sha1 = [BitConverter]::ToString(([Security.Cryptography.SHA1]::Create()).ComputeHash($obj)).Replace('-','').ToLowerInvariant()
+          Write-Host "QNIX_GIT_BLOB=$sha1"
+          if($sha1 -ne '99c61225c78ba3b66eca71fb0c0e278d1bf0bf27'){throw 'QNIX_PIN_VERIFICATION_FAILED'}
+          Write-Host 'QNIX_SOURCE_VERIFIED=true'
+      - name: Actually patch CLI and restore pristine binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $cli=Join-Path $env:LOCALAPPDATA 'agy\bin\agy.exe'
+          $manager=Join-Path $env:RUNNER_TEMP 'qnix-manager.py'
+          $clean=Join-Path $env:RUNNER_TEMP 'pristine-agy.exe'
+          Copy-Item -LiteralPath $cli -Destination $clean
+          $h0=(Get-FileHash $clean -Algorithm SHA256).Hash
+          Write-Host "PRISTINE_SHA256=$h0"
+          & python $manager status cli --path-cli $cli
+          if($LASTEXITCODE -ne 0){throw 'QNIX_PRE_STATUS_FAILED'}
+          Write-Host '=== REAL PATCH START ==='
+          & python $manager patch cli --path-cli $cli
+          $patchExit=$LASTEXITCODE
+          Write-Host "QNIX_PATCH_EXIT=$patchExit"
+          if($patchExit -ne 0){throw "QNIX_PATCH_FAILED code=$patchExit"}
+          & python $manager status cli --path-cli $cli
+          if($LASTEXITCODE -ne 0){throw 'QNIX_POST_STATUS_FAILED'}
+          $h1=(Get-FileHash $cli -Algorithm SHA256).Hash
+          if($h1 -eq $h0){throw 'QNIX_NO_BYTES_CHANGED'}
+          Write-Host "PATCHED_SHA256=$h1"
+          Write-Host 'REAL_CLI_PATCH_VERIFIED=true'
+          & $cli --version
+          if($LASTEXITCODE -ne 0){throw 'PATCHED_CLI_CANNOT_RUN_VERSION'}
+          Write-Host '=== RESTORE START ==='
+          & python $manager restore cli --path-cli $cli
+          if($LASTEXITCODE -ne 0){throw 'QNIX_RESTORE_FAILED'}
+          & python $manager status cli --path-cli $cli
+          if($LASTEXITCODE -ne 0){throw 'QNIX_RESTORED_STATUS_FAILED'}
+          $h2=(Get-FileHash $cli -Algorithm SHA256).Hash
+          Write-Host "RESTORED_SHA256=$h2"
+          if($h2 -ne $h0){throw 'PRISTINE_SHA256_MISMATCH_AFTER_RESTORE'}
+          Write-Host 'REAL_CLI_PATCH_AND_RESTORE_PASS=true'
+      - name: Smoke test official CLI after restoration without account credentials
+        shell: pwsh
+        run: |
+          $cli=Join-Path $env:LOCALAPPDATA 'agy\bin\agy.exe'
+          & $cli --version
+          if($LASTEXITCODE -ne 0){ throw 'POST_RESTORE_CLI_VERSION_FAILED' }
+          Write-Host 'AUTHENTICATED_MODEL_TEST_SKIPPED=no_google_credentials_in_public_ci'
