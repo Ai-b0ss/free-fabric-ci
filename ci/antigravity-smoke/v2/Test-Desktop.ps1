@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   Interactive Desktop UI smoke test. Must be run inside the current Windows
   user's UNLOCKED INTERACTIVE desktop session. No direct token/cookie access.
