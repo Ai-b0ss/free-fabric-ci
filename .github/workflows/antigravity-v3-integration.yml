@@ -1,0 +1,112 @@
+name: Antigravity v3 auto-repair integration
+
+on:
+  push:
+    branches:
+      - test/antigravity-health-v3-windows-20261025
+    paths:
+      - .github/workflows/antigravity-v3-integration.yml
+      - ci/antigravity-smoke/v3/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  automatic-eligibility-branch:
+    runs-on: windows-latest
+    timeout-minutes: 13
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [model-fails, model-succeeds-simulated]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install unpatched official CLI
+        run: |
+          $ErrorActionPreference='Stop'
+          $installer=Join-Path $env:RUNNER_TEMP 'official-cli.ps1'
+          Invoke-WebRequest 'https://antigravity.google/cli/install.ps1' -OutFile $installer -TimeoutSec 40
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
+          if($LASTEXITCODE -ne 0){throw "Official installer failed: $LASTEXITCODE"}
+          $cli=Join-Path $env:LOCALAPPDATA 'agy/bin/agy.exe'
+          if(-not (Test-Path $cli)){throw 'CLI binary missing'}
+          Write-Host "BASELINE_SHA256=$((Get-FileHash $cli -Algorithm SHA256).Hash)"
+          & $cli --version
+          if($LASTEXITCODE -ne 0){throw 'CLI --version failed'}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Produce isolated v3 test harness with synthetic model states only
+        run: |
+          $ErrorActionPreference='Stop'
+          $source=(Resolve-Path 'ci/antigravity-smoke/v3/Antigravity-Health-Repair.ps1').Path
+          $text=[IO.File]::ReadAllText($source)
+          $before='$script:Before=LiveTest'
+          $after='$script:After=LiveTest'
+          if(-not $text.Contains($before) -or -not $text.Contains($after)){throw 'Source structure unexpected'}
+          # Only model responses are injected. The real discovery, backup, QNIX
+          # download, integrity check, binary patch and restore logic remains intact.
+          $text=$text.Replace($before,'$script:Before=[pscustomobject]@{State="CLIENT_ELIGIBILITY";ExitCode=1}')
+          if('${{ matrix.scenario }}' -eq 'model-fails') {
+            $text=$text.Replace($after,'$script:After=[pscustomobject]@{State="UNKNOWN_FAILURE";ExitCode=1}')
+          } else {
+            $text=$text.Replace($after,'$script:After=[pscustomobject]@{State="PASS";ExitCode=0}')
+          }
+          $dir=Join-Path $env:RUNNER_TEMP 'isolated-integration'
+          New-Item -ItemType Directory -Force -Path $dir|Out-Null
+          $out=Join-Path $dir 'Antigravity-Health-Repair.ps1'
+          [IO.File]::WriteAllText($out,$text,[Text.UTF8Encoding]::new($true))
+          Copy-Item 'ci/antigravity-smoke/v3/Test-Desktop.ps1' -Destination $dir
+          $tokens=$null;$errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($out,[ref]$tokens,[ref]$errors)
+          if($errors.Count){throw ('Harness parse failure: '+($errors -join '; '))}
+          Write-Host 'SYNTHETIC_MODEL_STATES_ONLY=true'
+          Write-Host 'REAL_APPLICATION_BINARY_PATCH=true'
+      - name: Run full v3 detection, verified QNIX download and real binary mutation
+        run: |
+          $ErrorActionPreference='Stop'
+          $cli=Join-Path $env:LOCALAPPDATA 'agy/bin/agy.exe'
+          $baseline=(Get-FileHash $cli -Algorithm SHA256).Hash
+          $script=Join-Path $env:RUNNER_TEMP 'isolated-integration/Antigravity-Health-Repair.ps1'
+          $stdout=Join-Path $env:RUNNER_TEMP 'integration-stdout.txt'
+          $stderr=Join-Path $env:RUNNER_TEMP 'integration-stderr.txt'
+          $p=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $script + '"'),'-ApplyIfNeeded','-ModelTimeoutSeconds','15') -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if(-not $p.WaitForExit(140000)){
+            & taskkill.exe /PID $p.Id /T /F | Out-Null
+            throw 'Integration master timed out'
+          }
+          $output=Get-Content $stdout -Raw
+          Write-Host $output
+          if(Test-Path $stderr){Write-Host (Get-Content $stderr -Raw)}
+          if($output -notmatch 'PATCHER_GIT_BLOB_VERIFIED'){throw 'Pinned patcher integrity verification not executed'}
+          if($output -notmatch 'BACKUP_CLI'){throw 'Pristine backup not created'}
+          if($output -notmatch 'PATCH_CLI_AFTER\s+patched'){throw 'CLI did not become patched'}
+          $patcher=Join-Path $env:LOCALAPPDATA 'Antigravity-Health-Repair/manager-90498f50353d414232f593dffe88899bc80b6312.py'
+          if(-not (Test-Path $patcher)){throw 'Pinned patcher missing after run'}
+          & python $patcher status cli --path-cli $cli
+          if($LASTEXITCODE -ne 0){throw 'QNIX status command failed after master'}
+          if('${{ matrix.scenario }}' -eq 'model-fails'){
+            if($output -notmatch 'POST_PATCH_NOT_VERIFIED'){throw 'Expected unverified final state missing'}
+            if($output -notmatch 'ROLLBACK_CLI'){throw 'Rollback was not requested'}
+            if($output -match 'FINAL:\s+READY'){throw 'False READY after synthetic model failure'}
+            if((Get-FileHash $cli -Algorithm SHA256).Hash -ne $baseline){throw 'Auto rollback did not restore original SHA256'}
+            Write-Host 'AUTO_REPAIR_ERROR_ROLLBACK_PASS=true'
+          } else {
+            if($output -notmatch 'FINAL:\s+READY_CLI'){throw 'Expected READY_CLI for synthetic successful response'}
+            if((Get-FileHash $cli -Algorithm SHA256).Hash -eq $baseline){throw 'Success path did not preserve patched binary'}
+            Write-Host 'AUTO_REPAIR_SIMULATED_SUCCESS_BRANCH_PASS=true'
+            & python $patcher restore cli --path-cli $cli
+            if($LASTEXITCODE -ne 0){throw 'Cleanup QNIX restore failed'}
+            if((Get-FileHash $cli -Algorithm SHA256).Hash -ne $baseline){throw 'Cleanup original hash mismatch'}
+          }
+          Write-Host "POST_TEST_PRISTINE_SHA256=$((Get-FileHash $cli -Algorithm SHA256).Hash)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: antigravity-v3-integration-${{ matrix.scenario }}
+          path: ${{ runner.temp }}/integration-*.txt
+          if-no-files-found: ignore
