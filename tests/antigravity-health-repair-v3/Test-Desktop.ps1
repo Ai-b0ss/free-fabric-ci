@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   Interactive Desktop UI smoke test. Must be run inside the current Windows
   user's UNLOCKED INTERACTIVE desktop session. No direct token/cookie access.
@@ -16,7 +16,8 @@ $ErrorActionPreference='Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
-Add-Type -TypeDefinition @'
+if(-not ('AGDesktopWindow' -as [type])) {
+    Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class AGDesktopWindow {
@@ -25,6 +26,7 @@ public static class AGDesktopWindow {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 }
 '@
+}
 $script:Launched=$false
 $script:WindowProc=$null
 $script:Submitted=$false
@@ -51,14 +53,14 @@ function Snapshot([System.Windows.Automation.AutomationElement]$window) {
         $el=$all.Item($i)
         $c=$el.Current
         $name=[string]$c.Name
-        if($name -and $name.Length -lt 2400) { $text.Add($name) }
+        if(-not $c.IsOffscreen -and $name -and $name.Length -lt 2400) { $text.Add($name) }
         $ctype=$c.ControlType
         if($ctype -eq [System.Windows.Automation.ControlType]::Edit -or
            $ctype -eq [System.Windows.Automation.ControlType]::Document) {
             $pattern=$null
             if($el.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)) {
                 $v=[string]$pattern.Current.Value
-                if($v.Length -le 2400 -and $v) { $text.Add($v) }
+                if(-not $c.IsOffscreen -and $v.Length -le 2400 -and $v) { $text.Add($v) }
             }
             if($c.IsEnabled -and -not $c.IsOffscreen -and $c.IsKeyboardFocusable -and
                $c.BoundingRectangle.Width -gt 120 -and $c.BoundingRectangle.Height -gt 15) {
@@ -78,10 +80,46 @@ function Snapshot([System.Windows.Automation.AutomationElement]$window) {
     }
     return [pscustomobject]@{Texts=$text;Candidates=$editCandidates}
 }
+function ReadComposerText($element) {
+    try {
+        $valuePattern=$null
+        if($element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$valuePattern)) {
+            return [string]$valuePattern.Current.Value
+        }
+        $textPattern=$null
+        if($element.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern,[ref]$textPattern)) {
+            return [string]$textPattern.DocumentRange.GetText(1000)
+        }
+    } catch {}
+    return $null
+}
+function TrySendButton($root) {
+    $buttons=@()
+    try {
+        $all=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.Condition]::TrueCondition)
+        for($i=0;$i -lt [Math]::Min($all.Count,1500);$i++) {
+            $el=$all.Item($i)
+            $c=$el.Current
+            if($c.ControlType -ne [System.Windows.Automation.ControlType]::Button -or
+               -not $c.IsEnabled -or $c.IsOffscreen) {continue}
+            if(([string]$c.Name) -match '(?i)^\s*(send|send message|submit message|отправить|отправить сообщение)\s*$') {
+                $buttons+=,$el
+            }
+        }
+        if($buttons.Count -ne 1) {return $false}
+        $inv=$null
+        if($buttons[0].TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$inv)) {
+            $inv.Invoke()
+            return $true
+        }
+    } catch {}
+    return $false
+}
 function Classify($snapshot) {
     $s=($snapshot.Texts -join ' ')
-    if($s -match '(?i)user location is not supported|unsupported region|unsupported location|HTTP.?400.{0,100}(location|region)') {return 'SERVER_REGION_DENIED'}
-    if($s -match '(?i)eligibility check|not eligible|ineligible|eligibility restriction|проверка доступности|недоступно в вашем регионе') {return 'CLIENT_ELIGIBILITY'}
+    if($s -match '(?i)user location is not supported|unsupported region|unsupported location|HTTP.?400.{0,100}(location|region)|недоступно в вашем регионе') {return 'SERVER_REGION_DENIED'}
+    if($s -match '(?i)eligibility check|not eligible|ineligible|eligibility restriction|проверка доступности') {return 'CLIENT_ELIGIBILITY'}
     if($s -match '(?i)sign in with google|sign in to|please sign in|log in to|войти через google|войдите в аккаунт') {return 'AUTH_REQUIRED'}
     return 'NO_CHAT_INPUT'
 }
@@ -131,7 +169,11 @@ try {
     # Avoid selecting a search bar, code editor, or arbitrary text field.
     $candidates=@($snapshot.Candidates | Sort-Object -Property Score -Descending)
     if($candidates.Count -eq 0 -or $candidates[0].Score -lt 9) {
-        Result (Classify $snapshot) 'No confidently identified chat composer; did not type into an unknown field'
+        $priorState=Classify $snapshot
+        # An old error message can still be visible in a previous chat. Do not
+        # patch based solely on a stale, unsent message in that situation.
+        if($priorState -eq 'CLIENT_ELIGIBILITY') { $priorState='UNVERIFIED' }
+        Result $priorState 'No confidently identified chat composer; did not type into an unknown field'
         return
     }
     if($candidates.Count -gt 1 -and $candidates[1].Score -ge $candidates[0].Score) {
@@ -153,9 +195,24 @@ try {
     }
     # SendKeys operates on the focused UI element. Only plain ASCII appears in
     # prompt, avoiding SendKeys metacharacters such as { } + ^ % ~ ( ).
+    $baselineState=Classify $snapshot
     [System.Windows.Forms.SendKeys]::SendWait($prompt)
     Start-Sleep -Milliseconds 300
-    [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+    $composerValue=ReadComposerText $target
+    if(-not [string]::IsNullOrWhiteSpace($composerValue) -and $composerValue -notlike ('*'+$prompt+'*')) {
+        Result 'UNVERIFIED' 'Chat composer did not contain the intended prompt; nothing submitted'
+        return
+    }
+    if(-not (TrySendButton $root)) {
+        # Some builds have no accessible Send button; use Enter in composer.
+        [void][AGDesktopWindow]::SetForegroundWindow($win.MainWindowHandle)
+        $target.SetFocus()
+        if([AGDesktopWindow]::GetForegroundWindow() -ne $win.MainWindowHandle) {
+            Result 'UNVERIFIED' 'Focus changed before submitting; prompt not sent'
+            return
+        }
+        [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+    }
     $script:Submitted=$true
     $ends=(Get-Date).AddSeconds($TimeoutSeconds)
     do {
@@ -169,8 +226,9 @@ try {
                 }
             }
             $state=Classify $after
-            if($state -eq 'SERVER_REGION_DENIED' -or $state -eq 'CLIENT_ELIGIBILITY' -or $state -eq 'AUTH_REQUIRED') {
-                Result $state 'Recognized error visible in Desktop accessibility tree'
+            if(($state -eq 'SERVER_REGION_DENIED' -or $state -eq 'CLIENT_ELIGIBILITY' -or $state -eq 'AUTH_REQUIRED') -and
+               $state -ne $baselineState) {
+                Result $state 'A newly observed error is visible in Desktop accessibility tree'
                 return
             }
         } catch { }
