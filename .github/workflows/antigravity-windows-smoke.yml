@@ -1,0 +1,75 @@
+name: Antigravity Windows smoke (isolated branch)
+
+on:
+  push:
+    branches:
+      - test/antigravity-health-v3-windows-20261025
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-windows:
+    runs-on: windows-latest
+    timeout-minutes: 14
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse both Windows PowerShell scripts
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir='ci/antigravity-smoke/v2'
+          foreach($name in @('Antigravity-Health-Repair.ps1','Test-Desktop.ps1')){
+            $path=(Resolve-Path (Join-Path $dir $name)).Path
+            $tokens=$null
+            $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
+            if($errors.Count){ $errors | ForEach-Object { Write-Host $_ }; throw "Syntax errors in $name" }
+            Write-Host "PARSE_PASS $name"
+          }
+      - name: Execute diagnostic launcher on clean Windows image
+        run: |
+          $ErrorActionPreference='Stop'
+          $f=(Resolve-Path 'ci/antigravity-smoke/v2/Antigravity-Health-Repair.ps1').Path
+          $o=Join-Path $env:RUNNER_TEMP 'diag-stdout.txt'
+          $e=Join-Path $env:RUNNER_TEMP 'diag-stderr.txt'
+          $p=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $f + '"'),'-ModelTimeoutSeconds','15') -Wait -PassThru -RedirectStandardOutput $o -RedirectStandardError $e
+          $stdout=Get-Content $o -Raw -ErrorAction SilentlyContinue
+          $stderr=Get-Content $e -Raw -ErrorAction SilentlyContinue
+          Write-Host "DIAGNOSTIC_EXIT=$($p.ExitCode)"
+          Write-Host $stdout
+          if($stderr){ Write-Host "STDERR=$stderr" }
+          if($p.ExitCode -eq 0 -and $stdout -match 'FINAL:\s+READY'){throw 'False-positive READY on clean runner'}
+          if($stdout -notmatch 'ANTIGRAVITY_CHECK'){throw 'Main script did not execute'}
+          Write-Host 'DIAGNOSTIC_LAUNCH_VERIFIED'
+      - name: Attempt official CLI installation
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://antigravity.google/cli/install.ps1'
+          $file=Join-Path $env:RUNNER_TEMP 'official-cli-install.ps1'
+          Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing -TimeoutSec 35
+          Write-Host "OFFICIAL_CLI_INSTALLER_DOWNLOADED bytes=$((Get-Item $file).Length)"
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $file
+          if($LASTEXITCODE -ne 0){throw "CLI installer exit $LASTEXITCODE"}
+      - name: Run diagnostics again after installer attempt
+        run: |
+          $ErrorActionPreference='Continue'
+          $f=(Resolve-Path 'ci/antigravity-smoke/v2/Antigravity-Health-Repair.ps1').Path
+          $o=Join-Path $env:RUNNER_TEMP 'diag2-stdout.txt'
+          $e=Join-Path $env:RUNNER_TEMP 'diag2-stderr.txt'
+          $p=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $f + '"'),'-ModelTimeoutSeconds','15') -PassThru -Wait -RedirectStandardOutput $o -RedirectStandardError $e
+          Write-Host "POST_INSTALL_EXIT=$($p.ExitCode)"
+          Get-Content $o -ErrorAction SilentlyContinue
+          Get-Content $e -ErrorAction SilentlyContinue
+          Write-Host "AGY_PRESENT=$(Test-Path (Join-Path $env:LOCALAPPDATA 'agy/bin/agy.exe'))"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: antigravity-windows-logs
+          path: |
+            ${{ runner.temp }}/diag*.txt
+          if-no-files-found: ignore
