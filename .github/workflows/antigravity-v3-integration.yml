@@ -22,7 +22,7 @@ jobs:
         scenario: [model-fails, model-succeeds-simulated]
     defaults:
       run:
-        shell: pwsh
+        shell: powershell
     steps:
       - uses: actions/checkout@v4
       - name: Install unpatched official CLI
