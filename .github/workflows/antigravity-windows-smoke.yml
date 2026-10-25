@@ -1,4 +1,4 @@
-name: Antigravity v3 Windows smoke
+name: Antigravity v3.1 Windows smoke
 
 on:
   push:
@@ -32,12 +32,12 @@ jobs:
           }
       - name: Record v3 source fingerprints
         run: |
-          Get-FileHash 'ci/antigravity-smoke/v3/Antigravity-Health-Repair.ps1' -Algorithm SHA256 | Format-List
-          Get-FileHash 'ci/antigravity-smoke/v3/Test-Desktop.ps1' -Algorithm SHA256 | Format-List
+          Get-FileHash 'ci/antigravity-smoke/v31/Antigravity-Health-Repair.ps1' -Algorithm SHA256 | Format-List
+          Get-FileHash 'ci/antigravity-smoke/v31/Test-Desktop.ps1' -Algorithm SHA256 | Format-List
       - name: Execute diagnostic launcher on clean Windows image
         run: |
           $ErrorActionPreference='Stop'
-          $f=(Resolve-Path 'ci/antigravity-smoke/v3/Antigravity-Health-Repair.ps1').Path
+          $f=(Resolve-Path 'ci/antigravity-smoke/v31/Antigravity-Health-Repair.ps1').Path
           $o=Join-Path $env:RUNNER_TEMP 'diag-stdout.txt'
           $e=Join-Path $env:RUNNER_TEMP 'diag-stderr.txt'
           $p=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $f + '"'),'-ModelTimeoutSeconds','15') -PassThru -RedirectStandardOutput $o -RedirectStandardError $e
@@ -63,7 +63,7 @@ jobs:
       - name: Run diagnostics again after installer attempt
         run: |
           $ErrorActionPreference='Continue'
-          $f=(Resolve-Path 'ci/antigravity-smoke/v3/Antigravity-Health-Repair.ps1').Path
+          $f=(Resolve-Path 'ci/antigravity-smoke/v31/Antigravity-Health-Repair.ps1').Path
           $o=Join-Path $env:RUNNER_TEMP 'diag2-stdout.txt'
           $e=Join-Path $env:RUNNER_TEMP 'diag2-stderr.txt'
           $p=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $f + '"'),'-ModelTimeoutSeconds','15') -PassThru -RedirectStandardOutput $o -RedirectStandardError $e
@@ -109,7 +109,7 @@ jobs:
           $exe=Join-Path $env:LOCALAPPDATA 'Programs/antigravity/Antigravity.exe'
           Write-Host "DESKTOP_BINARY_PRESENT=$(Test-Path $exe)"
           if(-not (Test-Path $exe)){Write-Host 'DESKTOP_UNAVAILABLE';exit 0}
-          $probe=(Resolve-Path 'ci/antigravity-smoke/v3/Test-Desktop.ps1').Path
+          $probe=(Resolve-Path 'ci/antigravity-smoke/v31/Test-Desktop.ps1').Path
           $o=Join-Path $env:RUNNER_TEMP 'desktop-stdout.txt'
           $e=Join-Path $env:RUNNER_TEMP 'desktop-stderr.txt'
           $arg=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $probe + '"'),'-ExePath',('"' + $exe + '"'),'-TimeoutSeconds','15','-CloseIfStarted')
