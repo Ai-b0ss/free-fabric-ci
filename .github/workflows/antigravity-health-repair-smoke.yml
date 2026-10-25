@@ -39,3 +39,5 @@ jobs:
           Write-Host ("DIAGNOSTIC_EXIT=" + $exitCode)
           if($exitCode -ne 2) { throw "Expected NOT_INSTALLED=2, actual=$exitCode" }
           Write-Host 'SMOKE_PASS_NO_PATCH_NO_INSTALL'
+          $global:LASTEXITCODE = 0
+          exit 0
