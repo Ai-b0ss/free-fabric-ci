@@ -1,4 +1,4 @@
-name: Antigravity v3 auto-repair integration
+name: Antigravity v3.1 auto-repair integration
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - test/antigravity-health-v3-windows-20261025
     paths:
       - .github/workflows/antigravity-v3-integration.yml
-      - ci/antigravity-smoke/v3/**
+      - ci/antigravity-smoke/v31/**
   workflow_dispatch:
 
 permissions:
@@ -43,7 +43,7 @@ jobs:
       - name: Produce isolated v3 test harness with synthetic model states only
         run: |
           $ErrorActionPreference='Stop'
-          $source=(Resolve-Path 'ci/antigravity-smoke/v3/Antigravity-Health-Repair.ps1').Path
+          $source=(Resolve-Path 'ci/antigravity-smoke/v31/Antigravity-Health-Repair.ps1').Path
           $text=[IO.File]::ReadAllText($source)
           $before='$script:Before=LiveTest'
           $after='$script:After=LiveTest'
@@ -60,7 +60,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dir|Out-Null
           $out=Join-Path $dir 'Antigravity-Health-Repair.ps1'
           [IO.File]::WriteAllText($out,$text,[Text.UTF8Encoding]::new($true))
-          Copy-Item 'ci/antigravity-smoke/v3/Test-Desktop.ps1' -Destination $dir
+          Copy-Item 'ci/antigravity-smoke/v31/Test-Desktop.ps1' -Destination $dir
           $tokens=$null;$errors=$null
           [void][System.Management.Automation.Language.Parser]::ParseFile($out,[ref]$tokens,[ref]$errors)
           if($errors.Count){throw ('Harness parse failure: '+($errors -join '; '))}
