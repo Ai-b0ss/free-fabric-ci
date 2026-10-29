@@ -1,50 +1,33 @@
-<!-- PUBLIC_ACCOUNT_CONTEXT_V1 -->
-## Public repository account context — mandatory
-
-Before substantial work, read:
-
-1. `docs/ACCOUNT_CONTEXT.md` — privacy-safe account-level boundary.
-2. `docs/LINEAGE_CONTEXT.md` — privacy-safe idea/system history for this public surface.
-3. `.agent/lineage-index.json` — machine-readable public lineage aliases, anchors and publication boundary.
-4. `.agent/github-objects-index.json` — this public repository's PR/issue/workflow/tag archaeology.
-5. `.agent/pr-ledger.json` — complete all-state PR history for this public repository only, including real base/head SHAs. Read it whenever prior, closed, superseded, or historical PR work could matter; do not infer or publish private account topology from it.
-6. `.agent/tag-release-index.json` — exact public tag/release history for this repository, including terminal tag targets and release-asset digests. Read it whenever a version, release, baseline, historical archive, or published artifact may matter; do not infer or publish private account topology from it.
-
-These are navigation snapshots, not live authority: re-resolve current GitHub state when freshness matters. Any SHA, branch head, PR state, counter, test total, or "current status" written in README/docs is evidence for its recorded snapshot only unless it matches the live object you just resolved.
-
-If authenticated owner-authorized tooling exposes related private repositories and the task requires account-wide archaeology, search them too — but never copy private names, metadata, code or evidence into this public repository unless explicitly authorized for publication.
-
----
-
-<!-- AGENT_BOOTSTRAP_V2 -->
-# READ THIS FIRST — mandatory repository bootstrap
-
-For every substantial task in this repository, **before designing or editing**:
-
-1. Read [docs/AGENT_OPERATING_SYSTEM.md](docs/AGENT_OPERATING_SYSTEM.md) — this is the all-work recovery and source-authority contract.
-2. Read [docs/AGENT_NAVIGATION.md](docs/AGENT_NAVIGATION.md) — repository-specific architecture map.
-3. Pin the exact branch and commit; do not reason from a branch name alone.
-4. If prior/abandoned/forgotten work may exist, search branch tips **and full reachable Git history** with `tools/agent_history.py` before implementing a replacement.
-5. For exact code locations on any ref, run `python tools/build_agent_index.py --ref "<branch-or-SHA>"`.
-6. Never conclude "this was never implemented" from `main` alone.
-
-The navigation files in `main` are deliberately external to old evidence branches so those historical heads remain immutable.
-
----
-
 # AGENTS.md — Free Fabric CI
 
-## Mandatory orientation
-1. Pin branch/head in `.agent/branch-index.json`.
-2. Read `README.md` and `docs/AGENT_NAVIGATION.md`.
-3. Use `.agent/file-index.json` to choose harness, desktop/release, tests or workflow code.
-4. Run `python tools/build_agent_index.py --ref "<branch-or-SHA>"` on a checkout for exact line counts and symbol start lines.
-5. Before changing a contract, read both the implementation and its adversarial/transport/release tests.
+Public reusable CI, acceptance, packaging and release-verification tooling for the Free Fabric project family. See `README.md` for the overview.
 
-`main` is the reusable public source of truth. Worker/audit/probe/temp branches are development or evidence lines; do not infer promotion from branch names.
+`main` is the public source of truth. Other branches (worker, audit, probe, temp) are development or evidence lines; do not infer promotion from a branch name.
+
+## Running tests
+Python 3.13, standard library only. Same command as CI (`.github/workflows/ci.yml`):
+
+    python -m unittest discover -s tests -p 'test_*.py' -v
+
+`.github/workflows/live-fabric-proof.yml` needs live network and secrets; do not run it locally.
+
+## Code map
+| Area | Start here | Then look at |
+|---|---|---|
+| Protocol/migration harness | `harness/common.mjs` | forged/migration worker and verifier fixtures |
+| Desktop release build | `desktop/build_release.py` | combined acceptance, local HTTP helper |
+| Acceptance orchestration | `desktop/combined_acceptance.py` | endpoint, transport and release tests |
+| URL/loopback guard | `desktop/local_http.py` | `tests/test_local_http_url_guard.py` |
+| Adversarial contracts | `tests/test_f52_adversarial.py` | harness fixtures it exercises |
+| Release verification | `tests/test_release_verifier.py` | release builder and checks |
+
+Harness files are executable protocol fixtures. When changing one side of a contract, find the matching worker, verifier and tests first. Do not simplify adversarial fixtures just to make tests pass.
 
 ## Repository boundary
-This repository must remain safe as public software. Do not copy private product code, sessions, runtime state, credentials or private end-to-end evidence into it. Keep public harness behavior reproducible from the code stored here.
+This repository must stay safe as public software. Do not add private product code, sessions, runtime state, credentials or private end-to-end evidence. Public harness behavior must be reproducible from the code stored here.
 
 ## Change discipline
-Protocol/harness changes require tests for accept and reject paths. Release verification changes require deterministic artifact checks. Network helpers must preserve loopback/URL guard assumptions verified by tests.
+- Protocol or harness changes need tests for both accept and reject paths.
+- Release verification changes need deterministic artifact checks.
+- Network helpers must keep the loopback/URL guard assumptions that the tests verify.
+- Before changing a contract, read both its implementation and its adversarial, transport and release tests.
