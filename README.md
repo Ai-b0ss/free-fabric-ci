@@ -1,3 +1,6 @@
+> **Проект заморожен 30 октября 2026 года.** Разработка Free Fabric остановлена,
+> этот репозиторий сохранён для истории. Описание ниже написано до заморозки и
+> при заморозке не перепроверялось.
 # Free Fabric CI
 
 Public reusable CI, acceptance, packaging and deployment tooling for the Free Fabric project family.
